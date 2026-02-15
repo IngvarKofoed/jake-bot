@@ -63,6 +63,25 @@ def main() -> None:
         format="%(asctime)s [process-manager] %(levelname)s %(message)s",
     )
 
+    # The MCP SDK logs a noisy full traceback when the HTTP client
+    # disconnects before the response is sent (ClosedResourceError).
+    # This is harmless — downgrade it from ERROR to DEBUG.
+    class _SuppressDisconnect(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            if record.exc_info and record.exc_info[1] is not None:
+                chain = str(record.exc_info[1])
+                if "ClosedResourceError" in chain:
+                    record.levelno = logging.DEBUG
+                    record.levelname = "DEBUG"
+                    record.msg = "Client disconnected before response completed"
+                    record.exc_info = None
+                    record.exc_text = None
+            return True
+
+    logging.getLogger("mcp.server.streamable_http_manager").addFilter(
+        _SuppressDisconnect()
+    )
+
     log.info("Starting process-manager on http://127.0.0.1:%d/mcp", args.port)
     anyio.run(_run, args.port, args.services)
 
