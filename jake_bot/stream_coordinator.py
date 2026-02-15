@@ -12,10 +12,6 @@ from .models import PluginEvent, PluginEventType
 log = logging.getLogger(__name__)
 
 DISCORD_CHAR_LIMIT = 1900
-# Embed limits: description max 4096, but we keep under DISCORD_CHAR_LIMIT for
-# streaming-edit friendliness.
-CLI_COLOUR = discord.Colour(0x2ECC71)  # green — distinguishes CLI output from system msgs
-CLI_PREFIX = "💻 "
 MIN_EDIT_INTERVAL = 0.5  # seconds — ~2 edits/sec to stay under rate limits
 
 # Match bare URLs (not already inside <angle brackets>)
@@ -59,9 +55,6 @@ async def stream_to_discord(
     last_edit = 0.0
     final_event: PluginEvent | None = None
 
-    def _make_embed(text: str) -> discord.Embed:
-        return discord.Embed(description=f"{CLI_PREFIX}{text}", colour=CLI_COLOUR)
-
     async def flush(force: bool = False) -> None:
         nonlocal current_msg, last_edit, buffer
         now = time.monotonic()
@@ -71,15 +64,14 @@ async def stream_to_discord(
             return
 
         text = _suppress_embeds(buffer[:DISCORD_CHAR_LIMIT])
-        embed = _make_embed(text)
         if current_msg is None:
-            current_msg = await channel.send(embed=embed)
+            current_msg = await channel.send(text)
         else:
             try:
-                await current_msg.edit(embed=embed)
+                await current_msg.edit(content=text)
             except discord.HTTPException:
                 log.warning("Failed to edit message, sending new one")
-                current_msg = await channel.send(embed=embed)
+                current_msg = await channel.send(text)
         last_edit = time.monotonic()
 
     async for event in events:
