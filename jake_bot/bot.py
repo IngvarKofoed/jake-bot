@@ -8,7 +8,8 @@ from discord import app_commands
 from .active_conversations import ActiveConversations
 from .claude_plugin import ClaudeCodePlugin
 from .config import Config
-from .models import ActiveConversation
+from .formatter import DiscordFormatter
+from .models import ActiveConversation, PluginEventType
 from .stream_coordinator import stream_to_discord
 
 log = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ class JakeBot(discord.Client):
         self.tree = app_commands.CommandTree(self)
         self.conversations = ActiveConversations()
         self.claude = ClaudeCodePlugin()
+        self.formatter = DiscordFormatter()
 
         self._register_commands()
 
@@ -173,7 +175,7 @@ class JakeBot(discord.Client):
                 message=message.content,
                 session_id=conv.session_id,
             )
-            final = await stream_to_discord(events, message.channel)
+            final = await stream_to_discord(events, message.channel, self.formatter)
 
         if final and final.session_id:
             self.conversations.update_session_id(
@@ -181,5 +183,5 @@ class JakeBot(discord.Client):
             )
 
 
-        if final and final.type.value == "error":
+        if final and final.type == PluginEventType.ERROR:
             await message.channel.send(embed=_system_embed(f"Error: {final.content}"))

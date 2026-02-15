@@ -1,27 +1,32 @@
+"""Stream coordinator — consumes PluginEvents and streams them to Discord.
+
+Manages block state (open blocks with accumulated content), delegates
+rendering to a Formatter, and handles Discord rate-limiting / message
+splitting.
+"""
+
 from __future__ import annotations
 
 import logging
-import re
 import time
 from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+from typing import Any
 
 import discord
 
-from .models import PluginEvent, PluginEventType
+from .formatter import Formatter
+from .models import PluginEvent, PluginEventType, ResponseBlockType
 
 log = logging.getLogger(__name__)
 
 DISCORD_CHAR_LIMIT = 1900
 MIN_EDIT_INTERVAL = 0.5  # seconds — ~2 edits/sec to stay under rate limits
 
-# Match bare URLs (not already inside <angle brackets>)
-_BARE_URL_RE = re.compile(r"(?<![<(])(https?://\S+)")
 
-
-def _suppress_embeds(text: str) -> str:
-    """Wrap bare URLs in <brackets> so Discord won't generate previews."""
-    return _BARE_URL_RE.sub(r"<\1>", text)
-
+# ---------------------------------------------------------------------------
+# Code-fence repair for message splitting
+# ---------------------------------------------------------------------------
 
 def _unclosed_code_fence(text: str) -> str | None:
     """If text has an unclosed ``` block, return the fence line (e.g. '```json').
@@ -33,27 +38,51 @@ def _unclosed_code_fence(text: str) -> str | None:
         stripped = line.strip()
         if stripped.startswith("```"):
             if fence is None:
-                # Opening fence — remember it (e.g. "```json", "```")
                 fence = stripped
             else:
-                # Closing fence
                 fence = None
     return fence
 
 
+# ---------------------------------------------------------------------------
+# Block state tracker
+# ---------------------------------------------------------------------------
+
+@dataclass
+class _OpenBlock:
+    """Tracks accumulated state for a streaming block."""
+    block_type: ResponseBlockType
+    metadata: dict[str, Any] = field(default_factory=dict)
+    content: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
 async def stream_to_discord(
     events: AsyncIterator[PluginEvent],
     channel: discord.abc.Messageable,
+    formatter: Formatter,
 ) -> PluginEvent | None:
     """Consume plugin events and stream them into Discord messages.
 
     Returns the final COMPLETE or ERROR event, or None if the stream
     ended without one.
     """
+    # Discord message state
     buffer = ""
     current_msg: discord.Message | None = None
     last_edit = 0.0
     final_event: PluginEvent | None = None
+
+    # Open block tracking
+    open_blocks: dict[str, _OpenBlock] = {}
+
+    # We track the rendered output of the *current* streaming block so we
+    # can replace its previous render when new deltas arrive.
+    current_block_id: str | None = None
+    current_block_render_start: int = 0  # position in buffer where current block's render begins
 
     async def flush(force: bool = False) -> None:
         nonlocal current_msg, last_edit, buffer
@@ -63,7 +92,7 @@ async def stream_to_discord(
         if not buffer:
             return
 
-        text = _suppress_embeds(buffer[:DISCORD_CHAR_LIMIT])
+        text = buffer[:DISCORD_CHAR_LIMIT]
         if current_msg is None:
             current_msg = await channel.send(text)
         else:
@@ -74,29 +103,79 @@ async def stream_to_discord(
                 current_msg = await channel.send(text)
         last_edit = time.monotonic()
 
+    async def split_if_needed() -> None:
+        """If buffer exceeds the char limit, finalize current message and start new."""
+        nonlocal buffer, current_msg, current_block_render_start
+        if len(buffer) <= DISCORD_CHAR_LIMIT:
+            return
+
+        overflow = buffer[DISCORD_CHAR_LIMIT:]
+        buffer = buffer[:DISCORD_CHAR_LIMIT]
+        # Close unclosed code fence before splitting
+        fence = _unclosed_code_fence(buffer)
+        if fence:
+            buffer += "\n```"
+        await flush(force=True)
+        # Start a new message
+        current_msg = None
+        buffer = (fence + "\n" + overflow) if fence else overflow
+        # Reset render tracking since we're on a new message now
+        current_block_render_start = 0
+
     async for event in events:
-        if event.type == PluginEventType.TEXT_DELTA:
-            buffer += event.content
+        if event.type == PluginEventType.BLOCK_OPEN:
+            bid = event.block_id
+            if bid:
+                open_blocks[bid] = _OpenBlock(
+                    block_type=event.block_type or ResponseBlockType.TEXT,
+                    metadata=event.metadata,
+                )
+                current_block_id = bid
+                current_block_render_start = len(buffer)
+                # Ask formatter for opening decoration
+                opening = formatter.format_block_open(
+                    open_blocks[bid].block_type,
+                    event.metadata,
+                )
+                if opening:
+                    buffer += opening
 
-            # If buffer exceeds limit, finalize current message and start new
-            if len(buffer) > DISCORD_CHAR_LIMIT:
-                overflow = buffer[DISCORD_CHAR_LIMIT:]
-                buffer = buffer[:DISCORD_CHAR_LIMIT]
-                # Close unclosed code fence before splitting
-                fence = _unclosed_code_fence(buffer)
-                if fence:
-                    buffer += "\n```"
-                await flush(force=True)
-                # Reopen the code fence in the next message
-                current_msg = None
-                buffer = (fence + "\n" + overflow) if fence else overflow
+        elif event.type == PluginEventType.BLOCK_DELTA:
+            bid = event.block_id
+            if bid and bid in open_blocks:
+                ob = open_blocks[bid]
+                ob.content += event.content
 
-            await flush()
+                # Re-render the entire block content from scratch
+                rendered = formatter.format_block_content(
+                    ob.block_type, ob.content, ob.metadata,
+                )
+                # Replace previous render of this block in the buffer
+                buffer = buffer[:current_block_render_start] + rendered
 
-        elif event.type == PluginEventType.STATUS:
-            # Show tool usage as small text
-            status_line = f"\n-# {event.content}...\n"
-            buffer += status_line
+                await split_if_needed()
+                await flush()
+
+        elif event.type == PluginEventType.BLOCK_CLOSE:
+            bid = event.block_id
+            if bid and bid in open_blocks:
+                del open_blocks[bid]
+                current_block_id = None
+                # The final render is already in the buffer from the last DELTA
+
+        elif event.type == PluginEventType.BLOCK_EMIT:
+            # One-shot complete block
+            rendered = formatter.format_emit(
+                event.block_type or ResponseBlockType.TEXT,
+                event.content,
+                event.metadata,
+            )
+            buffer += rendered
+            # Reset block tracking — this is not a streaming block
+            current_block_id = None
+            current_block_render_start = len(buffer)
+
+            await split_if_needed()
             await flush()
 
         elif event.type in (PluginEventType.COMPLETE, PluginEventType.ERROR):

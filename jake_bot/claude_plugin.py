@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -13,11 +14,18 @@ from claude_agent_sdk import (
     ResultMessage,
     SystemMessage,
     TextBlock,
+    ThinkingBlock,
+    ToolResultBlock,
     ToolUseBlock,
     query,
 )
 
-from .models import ConversationInfo, PluginEvent, PluginEventType
+from .models import (
+    ConversationInfo,
+    PluginEvent,
+    PluginEventType,
+    ResponseBlockType,
+)
 from .plugin import CliPlugin
 
 log = logging.getLogger(__name__)
@@ -53,6 +61,12 @@ class ClaudeCodePlugin(CliPlugin):
         if session_id:
             options.resume = session_id
 
+        # Monotonic block ID generator for this turn
+        block_counter = itertools.count()
+
+        def _next_block_id() -> str:
+            return f"b{next(block_counter)}"
+
         # Collect events in a queue so the SDK query generator is fully
         # consumed within a single task, avoiding the anyio cancel-scope
         # "different task" RuntimeError on cleanup.
@@ -62,18 +76,92 @@ class ClaudeCodePlugin(CliPlugin):
             try:
                 async for msg in query(prompt=message, options=options):
                     if isinstance(msg, AssistantMessage):
+                        # Check for API-level errors on the message
+                        if msg.error:
+                            await event_queue.put(PluginEvent(
+                                type=PluginEventType.BLOCK_EMIT,
+                                block_id=_next_block_id(),
+                                block_type=ResponseBlockType.ERROR,
+                                content=f"API error: {msg.error}",
+                            ))
+
                         for block in msg.content:
                             if isinstance(block, TextBlock):
+                                # Text arrives as one complete block from the
+                                # SDK (non-streaming mode).  We emit it as
+                                # OPEN → DELTA → CLOSE so the coordinator can
+                                # stream it progressively to Discord.
+                                bid = _next_block_id()
                                 await event_queue.put(PluginEvent(
-                                    type=PluginEventType.TEXT_DELTA,
+                                    type=PluginEventType.BLOCK_OPEN,
+                                    block_id=bid,
+                                    block_type=ResponseBlockType.TEXT,
+                                ))
+                                await event_queue.put(PluginEvent(
+                                    type=PluginEventType.BLOCK_DELTA,
+                                    block_id=bid,
                                     content=block.text,
                                 ))
+                                await event_queue.put(PluginEvent(
+                                    type=PluginEventType.BLOCK_CLOSE,
+                                    block_id=bid,
+                                ))
+
+                            elif isinstance(block, ThinkingBlock):
+                                await event_queue.put(PluginEvent(
+                                    type=PluginEventType.BLOCK_EMIT,
+                                    block_id=_next_block_id(),
+                                    block_type=ResponseBlockType.THINKING,
+                                    content=block.thinking,
+                                ))
+
                             elif isinstance(block, ToolUseBlock):
                                 await event_queue.put(PluginEvent(
-                                    type=PluginEventType.STATUS,
-                                    content=f"Using tool: {block.name}",
-                                    metadata={"tool": block.name, "input": block.input},
+                                    type=PluginEventType.BLOCK_EMIT,
+                                    block_id=_next_block_id(),
+                                    block_type=ResponseBlockType.TOOL_USE,
+                                    content=block.name,
+                                    metadata={
+                                        "tool_name": block.name,
+                                        "tool_id": block.id,
+                                        "input": block.input,
+                                    },
                                 ))
+
+                            elif isinstance(block, ToolResultBlock):
+                                # content can be str, list[dict], or None
+                                if isinstance(block.content, str):
+                                    text = block.content
+                                elif isinstance(block.content, list):
+                                    # Multi-part result — extract text parts
+                                    parts = []
+                                    for part in block.content:
+                                        if isinstance(part, dict) and "text" in part:
+                                            parts.append(part["text"])
+                                    text = "\n".join(parts) if parts else str(block.content)
+                                else:
+                                    text = ""
+
+                                await event_queue.put(PluginEvent(
+                                    type=PluginEventType.BLOCK_EMIT,
+                                    block_id=_next_block_id(),
+                                    block_type=ResponseBlockType.TOOL_RESULT,
+                                    content=text,
+                                    metadata={
+                                        "tool_use_id": block.tool_use_id,
+                                        "is_error": block.is_error or False,
+                                    },
+                                ))
+
+                    elif isinstance(msg, SystemMessage):
+                        await event_queue.put(PluginEvent(
+                            type=PluginEventType.BLOCK_EMIT,
+                            block_id=_next_block_id(),
+                            block_type=ResponseBlockType.SYSTEM,
+                            content=str(msg.data),
+                            metadata={"subtype": msg.subtype},
+                        ))
+
                     elif isinstance(msg, ResultMessage):
                         await event_queue.put(PluginEvent(
                             type=PluginEventType.COMPLETE,
@@ -82,6 +170,7 @@ class ClaudeCodePlugin(CliPlugin):
                             cost_usd=msg.total_cost_usd,
                             duration_ms=msg.duration_ms,
                         ))
+
             except Exception as exc:
                 log.exception("Claude Code plugin error")
                 await event_queue.put(PluginEvent(
