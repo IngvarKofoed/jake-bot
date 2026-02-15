@@ -101,6 +101,45 @@ def create_server(
             return {"name": name, "status": "error", "error": str(exc)}
 
     # ------------------------------------------------------------------
+    # Tool: restart_process
+    # ------------------------------------------------------------------
+    @mcp.tool()
+    async def restart_process(
+        name: str,
+        force: bool = False,
+    ) -> dict:
+        """Restart a managed process using its original command and config.
+
+        Stops the process (SIGTERM → SIGKILL), then starts it again with
+        the same command, args, cwd, and env it was originally launched with.
+
+        Args:
+            name: Name of the process to restart.
+            force: If True, send SIGKILL immediately instead of SIGTERM.
+        """
+        try:
+            managed = await sv.stop(name=name, force=force)
+            # Re-start with the original config
+            managed = await sv.start(
+                name=name,
+                command=managed.command,
+                args=managed.args,
+                cwd=managed.cwd,
+                env=managed.env,
+            )
+            return {
+                "name": managed.name,
+                "pid": managed.pid,
+                "status": managed.status.value,
+                "command": f"{managed.command} {' '.join(managed.args)}".strip(),
+                "cwd": managed.cwd,
+            }
+        except KeyError:
+            return {"name": name, "status": "not_found", "error": f"No process named '{name}'"}
+        except Exception as exc:
+            return {"name": name, "status": "error", "error": str(exc)}
+
+    # ------------------------------------------------------------------
     # Tool: list_processes
     # ------------------------------------------------------------------
     @mcp.tool()
