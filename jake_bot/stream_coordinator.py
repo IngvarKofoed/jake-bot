@@ -123,6 +123,11 @@ async def stream_to_discord(
         current_block_render_start = 0
 
     async for event in events:
+        # Filter out system messages (e.g. init) — not useful in Discord output
+        if event.block_type == ResponseBlockType.SYSTEM:
+            log.debug("Filtered system event: %s", event.metadata.get("subtype"))
+            continue
+
         if event.type == PluginEventType.BLOCK_OPEN:
             bid = event.block_id
             if bid:
