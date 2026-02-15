@@ -32,13 +32,13 @@ class JakeBot(discord.Client):
 
     def _register_commands(self) -> None:
         @self.tree.command(name="claude", description="Start a new Claude Code conversation")
-        @app_commands.describe(workdir="Working directory for Claude (default: home)")
+        @app_commands.describe(workdir="Path relative to base workdir, or absolute")
         async def cmd_claude(interaction: discord.Interaction, workdir: str | None = None):
             if not self._is_allowed(interaction.user.id):
                 await interaction.response.send_message("Not authorized.", ephemeral=True)
                 return
 
-            wd = workdir or self.config.default_workdir
+            wd = self.config.resolve_workdir(workdir)
             conv = ActiveConversation(
                 plugin_id=self.claude.plugin_id,
                 workdir=wd,
@@ -100,7 +100,7 @@ class JakeBot(discord.Client):
         @self.tree.command(name="resume", description="Resume a past conversation")
         @app_commands.describe(
             session_id="Session ID to resume",
-            workdir="Working directory (default: home)",
+            workdir="Path relative to base workdir, or absolute",
         )
         async def cmd_resume(
             interaction: discord.Interaction,
@@ -111,7 +111,7 @@ class JakeBot(discord.Client):
                 await interaction.response.send_message("Not authorized.", ephemeral=True)
                 return
 
-            wd = workdir or self.config.default_workdir
+            wd = self.config.resolve_workdir(workdir)
             conv = ActiveConversation(
                 plugin_id=self.claude.plugin_id,
                 workdir=wd,

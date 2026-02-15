@@ -11,7 +11,22 @@ from dotenv import load_dotenv
 class Config:
     discord_token: str
     allowed_user_ids: set[int]
-    default_workdir: str = str(Path.home())
+    base_workdir: str = str(Path.home())
+
+    def resolve_workdir(self, relative: str | None = None) -> str:
+        """Resolve a user-provided path relative to base_workdir.
+
+        /claude data/jake-bot  ->  ~/data/jake-bot  ->  /Users/.../data/jake-bot
+        /claude                ->  ~                 ->  /Users/...
+        /claude /tmp/foo       ->  /tmp/foo          (absolute paths used as-is)
+        """
+        base = Path(self.base_workdir)
+        if not relative:
+            return str(base.resolve())
+        rel = Path(relative)
+        if rel.is_absolute():
+            return str(rel.resolve())
+        return str((base / rel).resolve())
 
     @classmethod
     def from_env(cls, env_path: str | Path | None = None) -> Config:
@@ -22,10 +37,10 @@ class Config:
         raw_ids = os.getenv("ALLOWED_USER_IDS", "")
         allowed = {int(uid.strip()) for uid in raw_ids.split(",") if uid.strip()}
 
-        workdir = os.getenv("DEFAULT_WORKDIR", str(Path.home()))
+        base = os.getenv("BASE_WORKDIR", str(Path.home()))
 
         return cls(
             discord_token=token,
             allowed_user_ids=allowed,
-            default_workdir=workdir,
+            base_workdir=base,
         )

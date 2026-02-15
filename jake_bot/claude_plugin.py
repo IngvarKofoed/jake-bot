@@ -29,14 +29,9 @@ class ClaudeCodePlugin(CliPlugin):
     def __init__(
         self,
         *,
-        allowed_tools: list[str] | None = None,
         max_turns: int = 30,
         max_budget_usd: float = 5.0,
     ) -> None:
-        self.allowed_tools = allowed_tools or [
-            "Read", "Write", "Edit", "Bash", "Glob", "Grep",
-            "WebSearch", "WebFetch", "Task",
-        ]
         self.max_turns = max_turns
         self.max_budget_usd = max_budget_usd
 
@@ -48,11 +43,11 @@ class ClaudeCodePlugin(CliPlugin):
         session_id: str | None = None,
     ) -> AsyncIterator[PluginEvent]:
         options = ClaudeAgentOptions(
-            allowed_tools=self.allowed_tools,
             permission_mode="bypassPermissions",
             max_turns=self.max_turns,
             max_budget_usd=self.max_budget_usd,
-            cwd=workdir,
+            cwd=str(Path(workdir).resolve()),
+            setting_sources=["user", "project", "local"],
         )
         if session_id:
             options.resume = session_id
