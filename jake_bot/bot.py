@@ -13,6 +13,14 @@ from .stream_coordinator import stream_to_discord
 
 log = logging.getLogger(__name__)
 
+# Embed colour for Jake system messages (blue)
+SYSTEM_COLOUR = discord.Colour(0x3498DB)
+
+
+def _system_embed(text: str) -> discord.Embed:
+    """Build a blue embed for Jake system messages."""
+    return discord.Embed(description=f"🤖 {text}", colour=SYSTEM_COLOUR)
+
 
 class JakeBot(discord.Client):
     def __init__(self, config: Config) -> None:
@@ -35,13 +43,13 @@ class JakeBot(discord.Client):
         @app_commands.describe(workdir="Path relative to base workdir, or absolute")
         async def cmd_claude(interaction: discord.Interaction, workdir: str | None = None):
             if not self._is_allowed(interaction.user.id):
-                await interaction.response.send_message("Not authorized.", ephemeral=True)
+                await interaction.response.send_message(embed=_system_embed("Not authorized."), ephemeral=True)
                 return
 
             try:
                 wd = self.config.resolve_workdir(workdir)
             except ValueError as exc:
-                await interaction.response.send_message(str(exc), ephemeral=True)
+                await interaction.response.send_message(embed=_system_embed(str(exc)), ephemeral=True)
                 return
 
             conv = ActiveConversation(
@@ -50,31 +58,37 @@ class JakeBot(discord.Client):
             )
             self.conversations.set(interaction.user.id, interaction.channel_id, conv)
             await interaction.response.send_message(
-                f"Started Claude Code conversation.\nWorkdir: `{wd}`\n"
-                f"Send messages in this channel to talk to Claude. Use `/end` to stop."
+                embed=_system_embed(
+                    f"Started Claude Code conversation.\nWorkdir: `{wd}`\n"
+                    f"Send messages in this channel to talk to Claude. Use `/end` to stop."
+                )
             )
 
         @self.tree.command(name="end", description="End your active conversation")
         async def cmd_end(interaction: discord.Interaction):
             if not self._is_allowed(interaction.user.id):
-                await interaction.response.send_message("Not authorized.", ephemeral=True)
+                await interaction.response.send_message(embed=_system_embed("Not authorized."), ephemeral=True)
                 return
 
             removed = self.conversations.remove(interaction.user.id, interaction.channel_id)
             if removed:
-                await interaction.response.send_message("Conversation ended.")
+                await interaction.response.send_message(embed=_system_embed("Conversation ended."))
             else:
-                await interaction.response.send_message("No active conversation in this channel.", ephemeral=True)
+                await interaction.response.send_message(
+                    embed=_system_embed("No active conversation in this channel."), ephemeral=True
+                )
 
         @self.tree.command(name="status", description="Show active conversation info")
         async def cmd_status(interaction: discord.Interaction):
             if not self._is_allowed(interaction.user.id):
-                await interaction.response.send_message("Not authorized.", ephemeral=True)
+                await interaction.response.send_message(embed=_system_embed("Not authorized."), ephemeral=True)
                 return
 
             conv = self.conversations.get(interaction.user.id, interaction.channel_id)
             if not conv:
-                await interaction.response.send_message("No active conversation.", ephemeral=True)
+                await interaction.response.send_message(
+                    embed=_system_embed("No active conversation."), ephemeral=True
+                )
                 return
 
             lines = [
@@ -82,25 +96,25 @@ class JakeBot(discord.Client):
                 f"**Workdir:** `{conv.workdir}`",
                 f"**Session:** `{conv.session_id or 'not yet assigned'}`",
             ]
-            await interaction.response.send_message("\n".join(lines))
+            await interaction.response.send_message(embed=_system_embed("\n".join(lines)))
 
         @self.tree.command(name="conversations", description="List past Claude conversations")
         async def cmd_conversations(interaction: discord.Interaction):
             if not self._is_allowed(interaction.user.id):
-                await interaction.response.send_message("Not authorized.", ephemeral=True)
+                await interaction.response.send_message(embed=_system_embed("Not authorized."), ephemeral=True)
                 return
 
             await interaction.response.defer()
             convos = await self.claude.list_conversations()
             if not convos:
-                await interaction.followup.send("No past conversations found.")
+                await interaction.followup.send(embed=_system_embed("No past conversations found."))
                 return
 
             lines = []
             for c in convos[:15]:
                 ts = c.timestamp.strftime("%Y-%m-%d %H:%M")
                 lines.append(f"`{c.id[:12]}` — {c.title} ({ts})")
-            await interaction.followup.send("\n".join(lines))
+            await interaction.followup.send(embed=_system_embed("\n".join(lines)))
 
         @self.tree.command(name="resume", description="Resume a past conversation")
         @app_commands.describe(
@@ -113,13 +127,13 @@ class JakeBot(discord.Client):
             workdir: str | None = None,
         ):
             if not self._is_allowed(interaction.user.id):
-                await interaction.response.send_message("Not authorized.", ephemeral=True)
+                await interaction.response.send_message(embed=_system_embed("Not authorized."), ephemeral=True)
                 return
 
             try:
                 wd = self.config.resolve_workdir(workdir)
             except ValueError as exc:
-                await interaction.response.send_message(str(exc), ephemeral=True)
+                await interaction.response.send_message(embed=_system_embed(str(exc)), ephemeral=True)
                 return
 
             conv = ActiveConversation(
@@ -129,8 +143,10 @@ class JakeBot(discord.Client):
             )
             self.conversations.set(interaction.user.id, interaction.channel_id, conv)
             await interaction.response.send_message(
-                f"Resumed conversation `{session_id[:12]}...`\n"
-                f"Workdir: `{wd}`\nSend messages to continue."
+                embed=_system_embed(
+                    f"Resumed conversation `{session_id[:12]}...`\n"
+                    f"Workdir: `{wd}`\nSend messages to continue."
+                )
             )
 
     async def on_ready(self) -> None:
@@ -164,11 +180,6 @@ class JakeBot(discord.Client):
                 message.author.id, message.channel.id, final.session_id
             )
 
-        # Show cost/duration footer
-        if final and final.cost_usd is not None:
-            cost = f"${final.cost_usd:.4f}"
-            duration = f"{final.duration_ms / 1000:.1f}s" if final.duration_ms else "?"
-            await message.channel.send(f"-# Cost: {cost} | Duration: {duration}")
 
         if final and final.type.value == "error":
-            await message.channel.send(f"Error: {final.content}")
+            await message.channel.send(embed=_system_embed(f"Error: {final.content}"))
