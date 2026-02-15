@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import asyncio
 import logging
+import re
 import time
 from collections.abc import AsyncIterator
 
@@ -13,6 +13,32 @@ log = logging.getLogger(__name__)
 
 DISCORD_CHAR_LIMIT = 1900
 MIN_EDIT_INTERVAL = 0.5  # seconds — ~2 edits/sec to stay under rate limits
+
+# Match bare URLs (not already inside <angle brackets>)
+_BARE_URL_RE = re.compile(r"(?<![<(])(https?://\S+)")
+
+
+def _suppress_embeds(text: str) -> str:
+    """Wrap bare URLs in <brackets> so Discord won't generate previews."""
+    return _BARE_URL_RE.sub(r"<\1>", text)
+
+
+def _unclosed_code_fence(text: str) -> str | None:
+    """If text has an unclosed ``` block, return the fence line (e.g. '```json').
+
+    Returns None if all code blocks are properly closed.
+    """
+    fence = None
+    for line in text.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            if fence is None:
+                # Opening fence — remember it (e.g. "```json", "```")
+                fence = stripped
+            else:
+                # Closing fence
+                fence = None
+    return fence
 
 
 async def stream_to_discord(
@@ -37,7 +63,7 @@ async def stream_to_discord(
         if not buffer:
             return
 
-        text = buffer[:DISCORD_CHAR_LIMIT]
+        text = _suppress_embeds(buffer[:DISCORD_CHAR_LIMIT])
         if current_msg is None:
             current_msg = await channel.send(text)
         else:
@@ -56,10 +82,14 @@ async def stream_to_discord(
             if len(buffer) > DISCORD_CHAR_LIMIT:
                 overflow = buffer[DISCORD_CHAR_LIMIT:]
                 buffer = buffer[:DISCORD_CHAR_LIMIT]
+                # Close unclosed code fence before splitting
+                fence = _unclosed_code_fence(buffer)
+                if fence:
+                    buffer += "\n```"
                 await flush(force=True)
-                # Start a new message with the overflow
+                # Reopen the code fence in the next message
                 current_msg = None
-                buffer = overflow
+                buffer = (fence + "\n" + overflow) if fence else overflow
 
             await flush()
 
