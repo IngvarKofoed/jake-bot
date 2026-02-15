@@ -53,6 +53,16 @@ class PluginEvent:
 # ---------------------------------------------------------------------------
 
 @dataclass
+class ToolRecord:
+    """A completed tool invocation — used to build the thread archive."""
+    tool_name: str
+    tool_input: dict[str, Any]
+    tool_id: str = ""
+    result_content: str = ""
+    is_error: bool = False
+
+
+@dataclass
 class ActiveConversation:
     plugin_id: str
     workdir: str

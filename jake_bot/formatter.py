@@ -11,7 +11,7 @@ import re
 from abc import ABC, abstractmethod
 from typing import Any
 
-from .models import ResponseBlockType
+from .models import ResponseBlockType, ToolRecord
 
 # ---------------------------------------------------------------------------
 # Abstract base
@@ -50,6 +50,14 @@ class Formatter(ABC):
         """Render a one-shot (complete) block."""
         ...
 
+    @abstractmethod
+    def format_tool_thread(
+        self,
+        tool_records: list[ToolRecord],
+    ) -> list[str]:
+        """Render tool records into message(s) for a Discord thread."""
+        ...
+
 
 # ---------------------------------------------------------------------------
 # Discord implementation
@@ -60,6 +68,9 @@ _BARE_URL_RE = re.compile(r"(?<![<(])(https?://\S+)")
 
 # Maximum characters to show for tool result output
 _TOOL_RESULT_MAX_CHARS = 800
+
+# Discord message limit (same as stream_coordinator)
+DISCORD_CHAR_LIMIT = 1900
 
 
 def _suppress_embeds(text: str) -> str:
@@ -142,6 +153,48 @@ class DiscordFormatter(Formatter):
             return _suppress_embeds(content)
 
         return content
+
+    # -- tool thread -------------------------------------------------------
+
+    def format_tool_thread(
+        self,
+        tool_records: list[ToolRecord],
+    ) -> list[str]:
+        _THREAD_RESULT_MAX = 1500
+        messages: list[str] = []
+        current = ""
+
+        for rec in tool_records:
+            prefix = "⚠️ " if rec.is_error else ""
+            # Summarise the input dict
+            input_str = ", ".join(
+                f"{k}={v!r}" for k, v in rec.tool_input.items()
+            )
+            if len(input_str) > 200:
+                input_str = input_str[:200] + "…"
+
+            entry = f"{prefix}🔧 **{rec.tool_name}**({input_str})"
+
+            if rec.result_content:
+                truncated = rec.result_content[:_THREAD_RESULT_MAX]
+                if len(rec.result_content) > _THREAD_RESULT_MAX:
+                    truncated += (
+                        f"\n… ({len(rec.result_content) - _THREAD_RESULT_MAX}"
+                        " chars truncated)"
+                    )
+                entry += f"\n```\n{truncated}\n```"
+
+            entry += "\n"
+
+            # Batch into messages under the char limit
+            if current and len(current) + len(entry) > DISCORD_CHAR_LIMIT:
+                messages.append(current)
+                current = ""
+            current += entry
+
+        if current:
+            messages.append(current)
+        return messages
 
     # -- private helpers ---------------------------------------------------
 
