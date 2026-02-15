@@ -38,7 +38,12 @@ class JakeBot(discord.Client):
                 await interaction.response.send_message("Not authorized.", ephemeral=True)
                 return
 
-            wd = self.config.resolve_workdir(workdir)
+            try:
+                wd = self.config.resolve_workdir(workdir)
+            except ValueError as exc:
+                await interaction.response.send_message(str(exc), ephemeral=True)
+                return
+
             conv = ActiveConversation(
                 plugin_id=self.claude.plugin_id,
                 workdir=wd,
@@ -111,7 +116,12 @@ class JakeBot(discord.Client):
                 await interaction.response.send_message("Not authorized.", ephemeral=True)
                 return
 
-            wd = self.config.resolve_workdir(workdir)
+            try:
+                wd = self.config.resolve_workdir(workdir)
+            except ValueError as exc:
+                await interaction.response.send_message(str(exc), ephemeral=True)
+                return
+
             conv = ActiveConversation(
                 plugin_id=self.claude.plugin_id,
                 workdir=wd,

@@ -19,14 +19,20 @@ class Config:
         /claude data/jake-bot  ->  ~/data/jake-bot  ->  /Users/.../data/jake-bot
         /claude                ->  ~                 ->  /Users/...
         /claude /tmp/foo       ->  /tmp/foo          (absolute paths used as-is)
+
+        Raises ValueError if the resolved directory does not exist.
         """
         base = Path(self.base_workdir)
         if not relative:
-            return str(base.resolve())
-        rel = Path(relative)
-        if rel.is_absolute():
-            return str(rel.resolve())
-        return str((base / rel).resolve())
+            resolved = base.resolve()
+        else:
+            rel = Path(relative)
+            resolved = rel.resolve() if rel.is_absolute() else (base / rel).resolve()
+
+        if not resolved.is_dir():
+            raise ValueError(f"Working directory does not exist: {resolved}")
+
+        return str(resolved)
 
     @classmethod
     def from_env(cls, env_path: str | Path | None = None) -> Config:

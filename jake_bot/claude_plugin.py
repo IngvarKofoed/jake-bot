@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -52,35 +53,58 @@ class ClaudeCodePlugin(CliPlugin):
         if session_id:
             options.resume = session_id
 
+        # Collect events in a queue so the SDK query generator is fully
+        # consumed within a single task, avoiding the anyio cancel-scope
+        # "different task" RuntimeError on cleanup.
+        event_queue: asyncio.Queue[PluginEvent | None] = asyncio.Queue()
+
+        async def _run_query() -> None:
+            try:
+                async for msg in query(prompt=message, options=options):
+                    if isinstance(msg, AssistantMessage):
+                        for block in msg.content:
+                            if isinstance(block, TextBlock):
+                                await event_queue.put(PluginEvent(
+                                    type=PluginEventType.TEXT_DELTA,
+                                    content=block.text,
+                                ))
+                            elif isinstance(block, ToolUseBlock):
+                                await event_queue.put(PluginEvent(
+                                    type=PluginEventType.STATUS,
+                                    content=f"Using tool: {block.name}",
+                                    metadata={"tool": block.name, "input": block.input},
+                                ))
+                    elif isinstance(msg, ResultMessage):
+                        await event_queue.put(PluginEvent(
+                            type=PluginEventType.COMPLETE,
+                            content=msg.result or "",
+                            session_id=msg.session_id,
+                            cost_usd=msg.total_cost_usd,
+                            duration_ms=msg.duration_ms,
+                        ))
+            except Exception as exc:
+                log.exception("Claude Code plugin error")
+                await event_queue.put(PluginEvent(
+                    type=PluginEventType.ERROR,
+                    content=str(exc),
+                ))
+            finally:
+                await event_queue.put(None)  # sentinel
+
+        task = asyncio.create_task(_run_query())
         try:
-            async for msg in query(prompt=message, options=options):
-                if isinstance(msg, AssistantMessage):
-                    for block in msg.content:
-                        if isinstance(block, TextBlock):
-                            yield PluginEvent(
-                                type=PluginEventType.TEXT_DELTA,
-                                content=block.text,
-                            )
-                        elif isinstance(block, ToolUseBlock):
-                            yield PluginEvent(
-                                type=PluginEventType.STATUS,
-                                content=f"Using tool: {block.name}",
-                                metadata={"tool": block.name, "input": block.input},
-                            )
-                elif isinstance(msg, ResultMessage):
-                    yield PluginEvent(
-                        type=PluginEventType.COMPLETE,
-                        content=msg.result or "",
-                        session_id=msg.session_id,
-                        cost_usd=msg.total_cost_usd,
-                        duration_ms=msg.duration_ms,
-                    )
-        except Exception as exc:
-            log.exception("Claude Code plugin error")
-            yield PluginEvent(
-                type=PluginEventType.ERROR,
-                content=str(exc),
-            )
+            while True:
+                event = await event_queue.get()
+                if event is None:
+                    break
+                yield event
+        finally:
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
     async def list_conversations(
         self, workdir: str | None = None
