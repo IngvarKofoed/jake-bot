@@ -19,6 +19,9 @@ from claude_agent_sdk import (
     ToolUseBlock,
     query,
 )
+from claude_agent_sdk.types import McpHttpServerConfig
+
+from jake_bot.process_manager.server import DEFAULT_PORT
 
 from .models import (
     ConversationInfo,
@@ -57,6 +60,12 @@ class ClaudeCodePlugin(CliPlugin):
             max_budget_usd=self.max_budget_usd,
             cwd=str(Path(workdir).resolve()),
             setting_sources=["user", "project", "local"],
+            mcp_servers={
+                "process-manager": McpHttpServerConfig(
+                    type="http",
+                    url=f"http://127.0.0.1:{DEFAULT_PORT}/mcp",
+                ),
+            },
         )
         if session_id:
             options.resume = session_id

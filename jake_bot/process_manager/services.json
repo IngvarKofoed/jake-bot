@@ -1,0 +1,7 @@
+{
+  "jake-bot": {
+    "command": "venv/bin/python",
+    "args": ["-m", "jake_bot"],
+    "cwd": "/Users/ingvar/data/jake-bot"
+  }
+}
