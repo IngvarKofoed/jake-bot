@@ -106,21 +106,18 @@ async def stream_to_discord(
     async def split_if_needed() -> None:
         """If buffer exceeds the char limit, finalize current message and start new."""
         nonlocal buffer, current_msg, current_block_render_start
-        if len(buffer) <= DISCORD_CHAR_LIMIT:
-            return
-
-        overflow = buffer[DISCORD_CHAR_LIMIT:]
-        buffer = buffer[:DISCORD_CHAR_LIMIT]
-        # Close unclosed code fence before splitting
-        fence = _unclosed_code_fence(buffer)
-        if fence:
-            buffer += "\n```"
-        await flush(force=True)
-        # Start a new message
-        current_msg = None
-        buffer = (fence + "\n" + overflow) if fence else overflow
-        # Reset render tracking since we're on a new message now
-        current_block_render_start = 0
+        while len(buffer) > DISCORD_CHAR_LIMIT:
+            overflow = buffer[DISCORD_CHAR_LIMIT:]
+            buffer = buffer[:DISCORD_CHAR_LIMIT]
+            # Close unclosed code fence before splitting
+            fence = _unclosed_code_fence(buffer)
+            if fence:
+                buffer += "\n```"
+            await flush(force=True)
+            # Start a new message
+            current_msg = None
+            buffer = (fence + "\n" + overflow) if fence else overflow
+            current_block_render_start = 0
 
     async for event in events:
         # Filter out system messages (e.g. init) — not useful in Discord output
@@ -189,6 +186,7 @@ async def stream_to_discord(
 
     # Final flush to ensure all buffered text is sent
     if buffer:
+        await split_if_needed()
         await flush(force=True)
 
     return final_event
