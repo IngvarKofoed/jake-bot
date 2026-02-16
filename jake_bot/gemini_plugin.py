@@ -77,16 +77,23 @@ class GeminiPlugin(CliPlugin):
             text_block_open = False
             stored_session_id: str | None = session_id
 
-            # Inject MCP server config into user-level ~/.gemini/settings.json
-            # (project-level doesn't work reliably because the Gemini CLI
-            # resolves the project root via .git, not the CWD).
-            settings_path = Path.home() / ".gemini" / "settings.json"
+            # Inject MCP server config into .gemini/settings.json at the
+            # git root (which is how the Gemini CLI resolves projects).
+            project_root = Path(workdir)
+            for parent in [Path(workdir)] + list(Path(workdir).parents):
+                if (parent / ".git").exists():
+                    project_root = parent
+                    break
+
+            settings_path = project_root / ".gemini" / "settings.json"
             original_settings: str | None = None
+            settings_existed = settings_path.exists()
             try:
-                if settings_path.exists():
+                if settings_existed:
                     original_settings = settings_path.read_text()
                     existing = json.loads(original_settings)
                 else:
+                    settings_path.parent.mkdir(parents=True, exist_ok=True)
                     existing = {}
 
                 mcp_servers = existing.get("mcpServers", {})
@@ -238,12 +245,17 @@ class GeminiPlugin(CliPlugin):
                     content=str(exc),
                 ))
             finally:
-                # Restore original ~/.gemini/settings.json
+                # Restore or remove the injected .gemini/settings.json
                 try:
-                    if original_settings is not None:
+                    if settings_existed and original_settings is not None:
                         settings_path.write_text(original_settings)
+                    elif not settings_existed and settings_path.exists():
+                        settings_path.unlink()
+                        gemini_dir = settings_path.parent
+                        if gemini_dir.exists() and not any(gemini_dir.iterdir()):
+                            gemini_dir.rmdir()
                 except Exception:
-                    log.warning("Failed to restore %s", settings_path, exc_info=True)
+                    log.warning("Failed to clean up %s", settings_path, exc_info=True)
 
                 await event_queue.put(None)  # sentinel
 
