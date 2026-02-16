@@ -16,6 +16,7 @@ from .models import (
     ResponseBlockType,
 )
 from .plugin import CliPlugin, clean_tool_name
+from .process_manager.server import DEFAULT_PORT
 
 log = logging.getLogger(__name__)
 
@@ -75,6 +76,29 @@ class GeminiPlugin(CliPlugin):
             text_block_id: str | None = None
             text_block_open = False
             stored_session_id: str | None = session_id
+
+            # Inject MCP server config into project-level .gemini/settings.json
+            settings_path = Path(workdir) / ".gemini" / "settings.json"
+            original_settings: str | None = None
+            settings_existed = settings_path.exists()
+            try:
+                if settings_existed:
+                    original_settings = settings_path.read_text()
+                    existing = json.loads(original_settings)
+                else:
+                    settings_path.parent.mkdir(parents=True, exist_ok=True)
+                    existing = {}
+
+                mcp_servers = existing.get("mcpServers", {})
+                mcp_servers["process-manager"] = {
+                    "url": f"http://127.0.0.1:{DEFAULT_PORT}/mcp",
+                    "type": "http",
+                    "trust": True,
+                }
+                existing["mcpServers"] = mcp_servers
+                settings_path.write_text(json.dumps(existing, indent=2) + "\n")
+            except Exception:
+                log.warning("Failed to inject MCP config into %s", settings_path, exc_info=True)
 
             async def _close_text_block() -> None:
                 nonlocal text_block_id, text_block_open
@@ -214,6 +238,19 @@ class GeminiPlugin(CliPlugin):
                     content=str(exc),
                 ))
             finally:
+                # Restore or remove the injected MCP config
+                try:
+                    if settings_existed and original_settings is not None:
+                        settings_path.write_text(original_settings)
+                    elif not settings_existed and settings_path.exists():
+                        settings_path.unlink()
+                        # Remove .gemini dir if we created it and it's now empty
+                        gemini_dir = settings_path.parent
+                        if gemini_dir.exists() and not any(gemini_dir.iterdir()):
+                            gemini_dir.rmdir()
+                except Exception:
+                    log.warning("Failed to clean up %s", settings_path, exc_info=True)
+
                 await event_queue.put(None)  # sentinel
 
         task = asyncio.create_task(_run_subprocess())
