@@ -34,6 +34,30 @@ from .plugin import CliPlugin
 log = logging.getLogger(__name__)
 
 
+def _clean_tool_name(raw: str) -> str:
+    """Normalize a CLI-specific tool name into a human-readable form.
+
+    Claude Code uses ``mcp__server-name__tool_name`` for MCP tools and
+    ``snake_case`` for built-in tools.  We turn separators into spaces
+    and title-case the result so the formatter receives clean display names.
+
+    Examples:
+        mcp__process-manager__restart_process → Process Manager · Restart Process
+        Read                                  → Read
+        write_file                            → Write File
+    """
+    # MCP-style: mcp__<server>__<tool>
+    if raw.startswith("mcp__"):
+        parts = raw.split("__", 2)  # ['mcp', 'server-name', 'tool_name']
+        if len(parts) == 3:
+            server = parts[1].replace("-", " ").replace("_", " ").title()
+            tool = parts[2].replace("-", " ").replace("_", " ").title()
+            return f"{server} · {tool}"
+
+    # Built-in tool: snake_case or PascalCase — just humanize underscores
+    return raw.replace("_", " ").replace("-", " ").strip().title() if "_" in raw or "-" in raw else raw
+
+
 class ClaudeCodePlugin(CliPlugin):
     plugin_id = "claude"
     display_name = "Claude Code"
@@ -125,13 +149,14 @@ class ClaudeCodePlugin(CliPlugin):
                                 ))
 
                             elif isinstance(block, ToolUseBlock):
+                                display_name = _clean_tool_name(block.name)
                                 await event_queue.put(PluginEvent(
                                     type=PluginEventType.BLOCK_EMIT,
                                     block_id=_next_block_id(),
                                     block_type=ResponseBlockType.TOOL_USE,
-                                    content=block.name,
+                                    content=display_name,
                                     metadata={
-                                        "tool_name": block.name,
+                                        "tool_name": display_name,
                                         "tool_id": block.id,
                                         "input": block.input,
                                     },
