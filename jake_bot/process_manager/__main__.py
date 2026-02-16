@@ -41,18 +41,26 @@ async def _run(port: int, services_path: Path) -> None:
     )
     uvi = uvicorn.Server(config)
 
-    # Install our own signal handlers so we control the shutdown
-    # sequence.  Tell uvicorn to exit, then our finally block
-    # takes care of stopping all managed child processes.
+    # Use _serve() instead of serve() to bypass uvicorn's
+    # capture_signals() context manager which overrides signal
+    # handlers with signal.signal() — preventing our async
+    # handlers from working.
+    shutdown = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda: setattr(uvi, "should_exit", True))
+        loop.add_signal_handler(sig, shutdown.set)
 
-    try:
-        await uvi.serve()
-    finally:
-        log.info("Shutting down — stopping all managed processes")
-        await supervisor.stop_all()
+    serve_task = asyncio.create_task(uvi._serve())
+
+    # Block until a signal arrives
+    await shutdown.wait()
+    log.info("Signal received — shutting down")
+
+    # Tell uvicorn to stop, then clean up child processes
+    uvi.should_exit = True
+    await serve_task
+    log.info("Stopping all managed processes")
+    await supervisor.stop_all()
 
 
 def main() -> None:
