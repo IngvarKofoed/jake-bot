@@ -11,10 +11,11 @@ stays alive and tracks all spawned processes across conversations.
 """
 
 import argparse
+import asyncio
 import logging
+import signal
 from pathlib import Path
 
-import anyio
 import uvicorn
 
 from jake_bot.process_manager.server import DEFAULT_PORT, create_server
@@ -39,6 +40,14 @@ async def _run(port: int, services_path: Path) -> None:
         app, host="127.0.0.1", port=port, log_level="info",
     )
     uvi = uvicorn.Server(config)
+
+    # Install our own signal handlers so we control the shutdown
+    # sequence.  Tell uvicorn to exit, then our finally block
+    # takes care of stopping all managed child processes.
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, lambda: setattr(uvi, "should_exit", True))
+
     try:
         await uvi.serve()
     finally:
@@ -83,7 +92,7 @@ def main() -> None:
     )
 
     log.info("Starting process-manager on http://127.0.0.1:%d/mcp", args.port)
-    anyio.run(_run, args.port, args.services)
+    asyncio.run(_run(args.port, args.services))
 
 
 if __name__ == "__main__":
