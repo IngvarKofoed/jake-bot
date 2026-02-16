@@ -1,0 +1,1 @@
+- Always read @docs/ARCHITECTURE.md
