@@ -9,7 +9,9 @@ from .active_conversations import ActiveConversations
 from .claude_plugin import ClaudeCodePlugin
 from .config import Config
 from .formatter import DiscordFormatter
+from .gemini_plugin import GeminiPlugin
 from .models import ActiveConversation, PluginEventType
+from .plugin import CliPlugin
 from .stream_coordinator import stream_to_discord
 
 log = logging.getLogger(__name__)
@@ -32,7 +34,10 @@ class JakeBot(discord.Client):
         self.config = config
         self.tree = app_commands.CommandTree(self)
         self.conversations = ActiveConversations()
-        self.claude = ClaudeCodePlugin()
+        self.plugins: dict[str, CliPlugin] = {
+            "claude": ClaudeCodePlugin(),
+            "gemini": GeminiPlugin(),
+        }
         self.formatter = DiscordFormatter()
 
         self._register_commands()
@@ -54,15 +59,34 @@ class JakeBot(discord.Client):
                 await interaction.response.send_message(embed=_system_embed(str(exc)), ephemeral=True)
                 return
 
-            conv = ActiveConversation(
-                plugin_id=self.claude.plugin_id,
-                workdir=wd,
-            )
+            conv = ActiveConversation(plugin_id="claude", workdir=wd)
             self.conversations.set(interaction.user.id, interaction.channel_id, conv)
             await interaction.response.send_message(
                 embed=_system_embed(
                     f"Started Claude Code conversation.\nWorkdir: `{wd}`\n"
                     f"Send messages in this channel to talk to Claude. Use `/end` to stop."
+                )
+            )
+
+        @self.tree.command(name="gemini", description="Start a new Gemini conversation")
+        @app_commands.describe(workdir="Path relative to base workdir, or absolute")
+        async def cmd_gemini(interaction: discord.Interaction, workdir: str | None = None):
+            if not self._is_allowed(interaction.user.id):
+                await interaction.response.send_message(embed=_system_embed("Not authorized."), ephemeral=True)
+                return
+
+            try:
+                wd = self.config.resolve_workdir(workdir)
+            except ValueError as exc:
+                await interaction.response.send_message(embed=_system_embed(str(exc)), ephemeral=True)
+                return
+
+            conv = ActiveConversation(plugin_id="gemini", workdir=wd)
+            self.conversations.set(interaction.user.id, interaction.channel_id, conv)
+            await interaction.response.send_message(
+                embed=_system_embed(
+                    f"Started Gemini conversation.\nWorkdir: `{wd}`\n"
+                    f"Send messages in this channel to talk to Gemini. Use `/end` to stop."
                 )
             )
 
@@ -100,14 +124,29 @@ class JakeBot(discord.Client):
             ]
             await interaction.response.send_message(embed=_system_embed("\n".join(lines)))
 
-        @self.tree.command(name="conversations", description="List past Claude conversations")
+        @self.tree.command(name="conversations", description="List past conversations for your active plugin")
         async def cmd_conversations(interaction: discord.Interaction):
             if not self._is_allowed(interaction.user.id):
                 await interaction.response.send_message(embed=_system_embed("Not authorized."), ephemeral=True)
                 return
 
+            conv = self.conversations.get(interaction.user.id, interaction.channel_id)
+            if not conv:
+                await interaction.response.send_message(
+                    embed=_system_embed("No active conversation. Start one with `/claude` or `/gemini` first."),
+                    ephemeral=True,
+                )
+                return
+
+            plugin = self.plugins.get(conv.plugin_id)
+            if not plugin:
+                await interaction.response.send_message(
+                    embed=_system_embed(f"Unknown plugin: {conv.plugin_id}"), ephemeral=True,
+                )
+                return
+
             await interaction.response.defer()
-            convos = await self.claude.list_conversations()
+            convos = await plugin.list_conversations(conv.workdir)
             if not convos:
                 await interaction.followup.send(embed=_system_embed("No past conversations found."))
                 return
@@ -122,14 +161,29 @@ class JakeBot(discord.Client):
         @app_commands.describe(
             session_id="Session ID to resume",
             workdir="Path relative to base workdir, or absolute",
+            plugin="Plugin to use (claude or gemini). Defaults to your active plugin.",
         )
         async def cmd_resume(
             interaction: discord.Interaction,
             session_id: str,
             workdir: str | None = None,
+            plugin: str | None = None,
         ):
             if not self._is_allowed(interaction.user.id):
                 await interaction.response.send_message(embed=_system_embed("Not authorized."), ephemeral=True)
+                return
+
+            # Determine plugin: explicit param > current active > error
+            if plugin:
+                plugin_id = plugin.lower()
+            else:
+                current = self.conversations.get(interaction.user.id, interaction.channel_id)
+                plugin_id = current.plugin_id if current else "claude"
+
+            if plugin_id not in self.plugins:
+                await interaction.response.send_message(
+                    embed=_system_embed(f"Unknown plugin: {plugin_id}"), ephemeral=True,
+                )
                 return
 
             try:
@@ -139,14 +193,14 @@ class JakeBot(discord.Client):
                 return
 
             conv = ActiveConversation(
-                plugin_id=self.claude.plugin_id,
+                plugin_id=plugin_id,
                 workdir=wd,
                 session_id=session_id,
             )
             self.conversations.set(interaction.user.id, interaction.channel_id, conv)
             await interaction.response.send_message(
                 embed=_system_embed(
-                    f"Resumed conversation `{session_id[:12]}...`\n"
+                    f"Resumed {self.plugins[plugin_id].display_name} conversation `{session_id[:12]}...`\n"
                     f"Workdir: `{wd}`\nSend messages to continue."
                 )
             )
@@ -168,9 +222,16 @@ class JakeBot(discord.Client):
         if not conv:
             return
 
+        plugin = self.plugins.get(conv.plugin_id)
+        if not plugin:
+            await message.channel.send(
+                embed=_system_embed(f"Error: unknown plugin `{conv.plugin_id}`")
+            )
+            return
+
         # Route plain text to the active plugin
         async with message.channel.typing():
-            events = self.claude.execute(
+            events = plugin.execute(
                 workdir=conv.workdir,
                 message=message.content,
                 session_id=conv.session_id,
@@ -181,7 +242,6 @@ class JakeBot(discord.Client):
             self.conversations.update_session_id(
                 message.author.id, message.channel.id, final.session_id
             )
-
 
         if final and final.type == PluginEventType.ERROR:
             await message.channel.send(embed=_system_embed(f"Error: {final.content}"))
