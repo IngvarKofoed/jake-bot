@@ -230,8 +230,10 @@ async def stream_to_discord(
         await split_if_needed()
         await flush(force=True)
 
-    # Post tool usage thread if any tools were used
-    if tool_records:
+    # Post tool usage thread if any tools were used.
+    # TODO: make this user-configurable (e.g. per-guild or per-user setting)
+    _enable_tool_threads = False
+    if _enable_tool_threads and tool_records:
         if not current_msg:
             current_msg = await channel.send("-# Done.")
         try:
