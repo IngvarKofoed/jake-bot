@@ -198,10 +198,18 @@ class DiscordFormatter(Formatter):
 
     # -- private helpers ---------------------------------------------------
 
+    _TOOL_PREVIEW_MAX_CHARS = 40
+
     def _render_tool_use(
         self, content: str, metadata: dict[str, Any]
     ) -> str:
         tool_name = metadata.get("tool_name", "tool")
+        tool_input = metadata.get("input", {})
+        if tool_input:
+            preview = ", ".join(f"{k}={v!r}" for k, v in tool_input.items())
+            if len(preview) > self._TOOL_PREVIEW_MAX_CHARS:
+                preview = preview[:self._TOOL_PREVIEW_MAX_CHARS] + "…"
+            return f"\n-# 🔧 {tool_name}({preview})\n"
         return f"\n-# 🔧 {tool_name}...\n"
 
     def _render_tool_result(
