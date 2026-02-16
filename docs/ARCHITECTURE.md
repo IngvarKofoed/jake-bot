@@ -128,6 +128,7 @@ Each plugin is a self-contained package. Adding a new CLI = adding one plugin, z
 - How to parse the streamed output into `ResponseBlock`s
 - How to extract the resume token from the CLI's output
 - How to ask the CLI for past conversations
+- How to normalize tool names into clean, human-readable display names (e.g. `mcp__process-manager__restart_process` → `Process Manager · Restart Process`). The formatter is CLI-agnostic — it renders whatever name the plugin provides, so each plugin must clean its own CLI's naming conventions.
 
 ## Platform Abstraction
 
