@@ -4,6 +4,8 @@
  */
 
 import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { homedir } from "node:os";
 import { log } from "./logger.js";
 
 export interface Conversation {
@@ -17,6 +19,10 @@ type ConvoKey = string;
 
 function makeKey(userId: string, channelId: string): ConvoKey {
   return `${userId}:${channelId}`;
+}
+
+function resolveWorkdir(workdir: string): string {
+  return resolve(homedir(), workdir);
 }
 
 export class ActiveConversations {
@@ -35,16 +41,17 @@ export class ActiveConversations {
         `Already in a ${existing.pluginId} conversation. Use /end first.`,
       );
     }
-    if (!existsSync(workdir)) {
-      throw new Error(`Working directory does not exist: ${workdir}`);
+    const resolved = resolveWorkdir(workdir);
+    if (!existsSync(resolved)) {
+      throw new Error(`Working directory does not exist: ${resolved}`);
     }
     const convo: Conversation = {
       pluginId,
-      workdir,
+      workdir: resolved,
       startedAt: Date.now(),
     };
     this.convos.set(key, convo);
-    log.info("convo", `start user=${userId} channel=${channelId} plugin=${pluginId} workdir=${workdir}`);
+    log.info("convo", `start user=${userId} channel=${channelId} plugin=${pluginId} workdir=${resolved}`);
     return convo;
   }
 
@@ -83,13 +90,14 @@ export class ActiveConversations {
     workdir: string,
     sessionId: string,
   ): Conversation {
-    if (!existsSync(workdir)) {
-      throw new Error(`Working directory does not exist: ${workdir}`);
+    const resolved = resolveWorkdir(workdir);
+    if (!existsSync(resolved)) {
+      throw new Error(`Working directory does not exist: ${resolved}`);
     }
     const key = makeKey(userId, channelId);
     const convo: Conversation = {
       pluginId,
-      workdir,
+      workdir: resolved,
       sessionId,
       startedAt: Date.now(),
     };

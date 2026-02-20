@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import "dotenv/config";
 
 export interface BotConfig {
@@ -25,7 +26,7 @@ export function loadConfig(): BotConfig {
   return {
     discordToken: requireEnv("DISCORD_TOKEN"),
     discordAppId: requireEnv("DISCORD_APP_ID"),
-    defaultWorkdir: process.env.DEFAULT_WORKDIR ?? process.cwd(),
+    defaultWorkdir: process.env.DEFAULT_WORKDIR ?? homedir(),
     processManagerPort: port,
     processManagerUrl: process.env.PROCESS_MANAGER_URL ?? `http://localhost:${port}/mcp`,
     claudeMaxTurns: parseInt(process.env.CLAUDE_MAX_TURNS ?? "30", 10),

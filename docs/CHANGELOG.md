@@ -55,3 +55,8 @@
 
 - Removed required `message` option from `/claude`, `/gemini`, and `/codex` slash commands
 - Start command now only opens the conversation; the user's first channel message triggers the plugin
+
+## 11. Resolve relative workdir paths against home directory
+
+- Relative paths (e.g. `private/jake-bot`) are now resolved against `homedir()` in `ActiveConversations`
+- Default workdir fallback changed from `process.cwd()` to `homedir()` in config
