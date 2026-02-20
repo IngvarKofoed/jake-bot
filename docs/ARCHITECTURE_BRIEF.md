@@ -16,8 +16,12 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full design document with code 
 
 ```
 src/
-  index.ts                 # Discord bot entry point (slash commands, message routing)
+  index.ts                 # Bootstrap: wires core objects and starts adapter
   config.ts                # env/config loading (dotenv)
+
+  adapters/
+    types.ts               # BotAdapter interface
+    discord.ts             # Discord inbound: Client, slash commands, event listeners
 
   stream/
     events.ts              # BotEvent discriminated union — the core type system
@@ -82,14 +86,15 @@ Long-running processes managed via MCP protocol. `ProcessSupervisor` handles spa
 
 ```
 User message → Discord slash command / follow-up message
-  → Router.route()
-    → ActiveConversations lookup
-    → Plugin.execute() → AsyncGenerator<BotEvent>
-      → StreamCoordinator.run()
-        → Renderer formats each event
-        → Platform sends/edits messages
-        → Returns CompleteEvent with sessionId
-    → Session ID saved for follow-up turns
+  → DiscordAdapter (event listeners)
+    → Router.route()
+      → ActiveConversations lookup
+      → Plugin.execute() → AsyncGenerator<BotEvent>
+        → StreamCoordinator.run()
+          → Renderer formats each event
+          → Platform sends/edits messages
+          → Returns CompleteEvent with sessionId
+      → Session ID saved for follow-up turns
 ```
 
 ## Commands

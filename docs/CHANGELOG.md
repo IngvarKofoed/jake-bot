@@ -35,3 +35,10 @@
 - Replaced all raw `console.log/warn/error` calls in `index.ts` and `process-manager/main.ts` with `log.info/warn/error`
 - Updated `PluginContext.logger` to use the `Logger` interface
 - Only `src/core/logger.ts` touches `console` now — single point of control
+
+## 7. Extract Discord adapter from index.ts
+
+- Created `src/adapters/types.ts` with `BotAdapter` interface and `src/adapters/discord.ts` with `DiscordAdapter` class
+- Moved all Discord-specific code (Client, slash commands, handlers, event listeners) from `index.ts` into `DiscordAdapter`
+- Rewrote `index.ts` as pure bootstrap: loads config, registers plugins, creates core objects, starts adapter — zero discord.js imports
+- Updated CLAUDE.md convention and architecture docs to reflect new `adapters/` layer

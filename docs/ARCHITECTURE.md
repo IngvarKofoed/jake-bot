@@ -54,8 +54,12 @@
 ```
 jake-bot/
   src/
-    index.ts                        # entry point
+    index.ts                        # bootstrap: wires core objects and starts adapter
     config.ts                       # env/config loading
+
+    adapters/
+      types.ts                      # BotAdapter interface
+      discord.ts                    # Discord inbound: Client, slash commands, event listeners
 
     stream/
       events.ts                     # BotEvent discriminated union
