@@ -42,3 +42,7 @@
 - Moved all Discord-specific code (Client, slash commands, handlers, event listeners) from `index.ts` into `DiscordAdapter`
 - Rewrote `index.ts` as pure bootstrap: loads config, registers plugins, creates core objects, starts adapter — zero discord.js imports
 - Updated CLAUDE.md convention and architecture docs to reflect new `adapters/` layer
+
+## 8. Add conversation lifecycle logging to ActiveConversations
+
+- Log start, end, resume, and session ID capture in `ActiveConversations` so inbound adapter calls are visible in the core

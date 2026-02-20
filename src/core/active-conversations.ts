@@ -4,6 +4,7 @@
  */
 
 import { existsSync } from "node:fs";
+import { log } from "./logger.js";
 
 export interface Conversation {
   pluginId: string;
@@ -43,6 +44,7 @@ export class ActiveConversations {
       startedAt: Date.now(),
     };
     this.convos.set(key, convo);
+    log.info("convo", `start user=${userId} channel=${channelId} plugin=${pluginId} workdir=${workdir}`);
     return convo;
   }
 
@@ -52,11 +54,18 @@ export class ActiveConversations {
 
   updateSessionId(userId: string, channelId: string, sessionId: string): void {
     const convo = this.convos.get(makeKey(userId, channelId));
-    if (convo) convo.sessionId = sessionId;
+    if (convo) {
+      convo.sessionId = sessionId;
+      log.info("convo", `session user=${userId} channel=${channelId} sessionId=${sessionId}`);
+    }
   }
 
   end(userId: string, channelId: string): boolean {
-    return this.convos.delete(makeKey(userId, channelId));
+    const deleted = this.convos.delete(makeKey(userId, channelId));
+    if (deleted) {
+      log.info("convo", `end user=${userId} channel=${channelId}`);
+    }
+    return deleted;
   }
 
   listAll(): Array<{ userId: string; channelId: string; conversation: Conversation }> {
@@ -85,6 +94,7 @@ export class ActiveConversations {
       startedAt: Date.now(),
     };
     this.convos.set(key, convo);
+    log.info("convo", `resume user=${userId} channel=${channelId} plugin=${pluginId} session=${sessionId}`);
     return convo;
   }
 }
