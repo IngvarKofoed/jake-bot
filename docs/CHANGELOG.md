@@ -12,3 +12,8 @@
 
 - Moved architecture content from CLAUDE.md to `docs/ARCHITECTURE_BRIEF.md` with enriched data flow, env variable table, and pattern descriptions
 - Slimmed CLAUDE.md to concise project instructions and conventions
+
+## 3. Fix misleading ENOENT when workdir doesn't exist
+
+- Validate `workdir` exists in `ActiveConversations.start()` and `.resume()` before passing to plugins
+- A non-existent cwd causes `spawn` to throw ENOENT blaming the executable, which is misleading

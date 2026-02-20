@@ -3,6 +3,8 @@
  * Each conversation is bound to a specific plugin and working directory.
  */
 
+import { existsSync } from "node:fs";
+
 export interface Conversation {
   pluginId: string;
   workdir: string;
@@ -31,6 +33,9 @@ export class ActiveConversations {
       throw new Error(
         `Already in a ${existing.pluginId} conversation. Use /end first.`,
       );
+    }
+    if (!existsSync(workdir)) {
+      throw new Error(`Working directory does not exist: ${workdir}`);
     }
     const convo: Conversation = {
       pluginId,
@@ -69,6 +74,9 @@ export class ActiveConversations {
     workdir: string,
     sessionId: string,
   ): Conversation {
+    if (!existsSync(workdir)) {
+      throw new Error(`Working directory does not exist: ${workdir}`);
+    }
     const key = makeKey(userId, channelId);
     const convo: Conversation = {
       pluginId,
