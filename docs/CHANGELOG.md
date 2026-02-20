@@ -28,3 +28,10 @@
 - Added `src/core/logger.ts` with ISO-timestamped `log.info/warn/error(tag, msg)` helper
 - Log all BotEvents in `StreamCoordinator` (skip `block_delta` to avoid noise; report content length at `block_close`)
 - Log routed messages in `Router` with user/channel/plugin context
+
+## 6. Centralize all logging through the timestamped logger
+
+- Moved `logBotEvent` from `stream-coordinator.ts` into `src/core/logger.ts`
+- Replaced all raw `console.log/warn/error` calls in `index.ts` and `process-manager/main.ts` with `log.info/warn/error`
+- Updated `PluginContext.logger` to use the `Logger` interface
+- Only `src/core/logger.ts` touches `console` now — single point of control

@@ -7,6 +7,7 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { createServer } from "node:http";
 import { ProcessSupervisor } from "./supervisor.js";
 import { createProcessManagerMcp, DEFAULT_PORT } from "./mcp-server.js";
+import { log } from "../core/logger.js";
 
 const port = parseInt(process.env.PROCESS_MANAGER_PORT ?? String(DEFAULT_PORT), 10);
 const supervisor = new ProcessSupervisor();
@@ -53,15 +54,17 @@ const httpServer = createServer(async (req, res) => {
   res.writeHead(404).end("Not found");
 });
 
+const TAG = "mcp";
+
 httpServer.listen(port, () => {
-  console.log(`Process Manager MCP server listening on http://localhost:${port}`);
-  console.log(`  SSE endpoint: http://localhost:${port}/sse`);
-  console.log(`  Health check: http://localhost:${port}/health`);
+  log.info(TAG, `Process Manager listening on http://localhost:${port}`);
+  log.info(TAG, `  SSE endpoint: http://localhost:${port}/sse`);
+  log.info(TAG, `  Health check: http://localhost:${port}/health`);
 });
 
 // Graceful shutdown
 async function shutdown() {
-  console.log("\nShutting down...");
+  log.info(TAG, "Shutting down...");
   await supervisor.stopAll();
   httpServer.close();
   process.exit(0);

@@ -1,4 +1,5 @@
 import type { BotEvent } from "../stream/events.js";
+import type { Logger } from "../core/logger.js";
 
 export interface ConversationInfo {
   id: string;
@@ -19,7 +20,7 @@ export interface ExecuteInput {
  */
 export interface PluginContext {
   mcpEndpoints: ReadonlyArray<{ name: string; url: string }>;
-  logger: Pick<Console, "info" | "warn" | "error">;
+  logger: Logger;
 }
 
 /**

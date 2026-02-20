@@ -1,7 +1,7 @@
 import type { BotEvent, CompleteEvent, FatalErrorEvent } from "./events.js";
 import type { ChatPlatform, MessageRef } from "../platform/types.js";
 import type { Renderer } from "../rendering/types.js";
-import { log } from "../core/logger.js";
+import { logBotEvent } from "../core/logger.js";
 
 interface OpenBlock {
   kind: "text" | "thinking";
@@ -22,58 +22,6 @@ function unclosedCodeFence(text: string): string | null {
     }
   }
   return fence;
-}
-
-const TAG = "stream";
-
-function truncate(s: string, max: number): string {
-  return s.length <= max ? s : s.slice(0, max) + "…";
-}
-
-function logEvent(ev: BotEvent, openBlocks: Map<string, OpenBlock>): void {
-  const p = ev.pluginId;
-  switch (ev.type) {
-    case "block_open":
-      log.info(TAG, `[${p}] block_open ${ev.block.kind} id=${ev.block.id}`);
-      break;
-    case "block_delta":
-      // Skipped — too noisy. Content length logged at block_close.
-      break;
-    case "block_close": {
-      const ob = openBlocks.get(ev.blockId);
-      const len = ob?.content.length ?? 0;
-      log.info(TAG, `[${p}] block_close id=${ev.blockId} (${len} chars)`);
-      break;
-    }
-    case "block_emit":
-      if (ev.block.kind === "tool_use") {
-        const input = truncate(JSON.stringify(ev.block.input), 120);
-        log.info(TAG, `[${p}] tool_use ${ev.block.toolName} ${input}`);
-      } else if (ev.block.kind === "tool_result") {
-        const len =
-          ev.block.content.format === "text"
-            ? ev.block.content.text.length
-            : ev.block.content.format === "parts"
-              ? ev.block.content.parts.reduce((n, part) => n + part.text.length, 0)
-              : 0;
-        log.info(
-          TAG,
-          `[${p}] tool_result ${ev.block.isError ? "ERROR " : ""}(${len} chars)`,
-        );
-      } else {
-        log.info(TAG, `[${p}] emit ${ev.block.kind}: ${truncate(ev.block.message, 100)}`);
-      }
-      break;
-    case "complete":
-      log.info(
-        TAG,
-        `[${p}] complete session=${ev.sessionId ?? "–"} cost=$${ev.costUsd?.toFixed(4) ?? "–"} duration=${ev.durationMs ?? "–"}ms`,
-      );
-      break;
-    case "fatal_error":
-      log.error(TAG, `[${p}] fatal_error: ${ev.error.message}`);
-      break;
-  }
 }
 
 export class StreamCoordinator {
@@ -132,8 +80,12 @@ export class StreamCoordinator {
       buffer = "";
     };
 
+    const lens = {
+      contentLength: (id: string) => openBlocks.get(id)?.content.length ?? 0,
+    };
+
     for await (const ev of events) {
-      logEvent(ev, openBlocks);
+      logBotEvent(ev, lens);
       switch (ev.type) {
         case "block_open":
           openBlocks.set(ev.block.id, {

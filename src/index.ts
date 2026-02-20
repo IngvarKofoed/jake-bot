@@ -22,6 +22,7 @@ import { GeminiPlugin } from "./plugins/gemini/plugin.js";
 import { DiscordPlatform } from "./platform/discord.js";
 import { DiscordRenderer } from "./rendering/discord-renderer.js";
 import type { PluginContext } from "./plugins/types.js";
+import { log } from "./core/logger.js";
 
 const config = loadConfig();
 
@@ -36,7 +37,7 @@ plugins.register(new GeminiPlugin(config.geminiBin));
 
 const ctx: PluginContext = {
   mcpEndpoints: [{ name: "process-manager", url: config.processManagerUrl }],
-  logger: console,
+  logger: log,
 };
 
 // -- Discord client --
@@ -120,7 +121,7 @@ async function registerCommands() {
   await rest.put(Routes.applicationCommands(config.discordAppId), {
     body: commands.map((c) => c.toJSON()),
   });
-  console.log("Slash commands registered");
+  log.info("bot", "Slash commands registered");
 }
 
 // -- Command handlers --
@@ -245,7 +246,7 @@ client.on("interactionCreate", async (interaction) => {
         break;
     }
   } catch (err) {
-    console.error("Command error:", err);
+    log.error("bot", `Command error: ${err instanceof Error ? err.message : String(err)}`);
     const reply = interaction.deferred || interaction.replied
       ? interaction.followUp.bind(interaction)
       : interaction.reply.bind(interaction);
@@ -262,7 +263,7 @@ client.on("messageCreate", async (message: Message) => {
   try {
     await router.route(message.author.id, message.channelId, message.content);
   } catch (err) {
-    console.error("Message routing error:", err);
+    log.error("router", `Message routing error: ${err instanceof Error ? err.message : String(err)}`);
     const errMsg = err instanceof Error ? err.message : String(err);
     await platform.send(message.channelId, {
       text: `\u274C Error: ${errMsg}`,
@@ -274,7 +275,7 @@ client.on("messageCreate", async (message: Message) => {
 // -- Startup --
 
 client.once("ready", () => {
-  console.log(`Logged in as ${client.user?.tag}`);
+  log.info("bot", `Logged in as ${client.user?.tag}`);
 });
 
 async function main() {
@@ -283,6 +284,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("Fatal:", err);
+  log.error("bot", `Fatal: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 });
