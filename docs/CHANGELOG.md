@@ -72,3 +72,8 @@
 - Tool header was flushed but not finalized, so subsequent text was edited into the same message
 - Changed `tool_use` handling to `finalize()` after setting the buffer, ensuring the tool header is sent as its own message
 - Cleaned up `tool_result` to skip sending when the rendered result is empty
+
+## 14. Fix typing indicator stuck after stream completes
+
+- `stopTyping()` was called before `finalize()`, but `finalize()` restarts the typing timer — so the indicator was never cleared
+- Swapped the order: `finalize()` first, then `stopTyping()`

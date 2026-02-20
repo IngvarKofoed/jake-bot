@@ -167,8 +167,8 @@ export class StreamCoordinator {
       if (ev.type === "complete" || ev.type === "fatal_error") break;
     }
 
-    stopTyping();
     await finalize();
+    stopTyping();
     return result;
   }
 }
