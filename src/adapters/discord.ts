@@ -63,9 +63,6 @@ export class DiscordAdapter implements BotAdapter {
         .setName("claude")
         .setDescription("Start a Claude Code conversation")
         .addStringOption((o) =>
-          o.setName("message").setDescription("Initial message").setRequired(true),
-        )
-        .addStringOption((o) =>
           o.setName("workdir").setDescription("Working directory"),
         ),
 
@@ -73,18 +70,12 @@ export class DiscordAdapter implements BotAdapter {
         .setName("gemini")
         .setDescription("Start a Gemini conversation")
         .addStringOption((o) =>
-          o.setName("message").setDescription("Initial message").setRequired(true),
-        )
-        .addStringOption((o) =>
           o.setName("workdir").setDescription("Working directory"),
         ),
 
       new SlashCommandBuilder()
         .setName("codex")
         .setDescription("Start a Codex conversation")
-        .addStringOption((o) =>
-          o.setName("message").setDescription("Initial message").setRequired(true),
-        )
         .addStringOption((o) =>
           o.setName("workdir").setDescription("Working directory"),
         ),
@@ -194,7 +185,6 @@ export class DiscordAdapter implements BotAdapter {
     interaction: ChatInputCommandInteraction,
     pluginId: string,
   ): Promise<void> {
-    const message = interaction.options.getString("message", true);
     const workdir = interaction.options.getString("workdir") ?? this.config.defaultWorkdir;
     const userId = interaction.user.id;
     const channelId = interaction.channelId;
@@ -207,18 +197,7 @@ export class DiscordAdapter implements BotAdapter {
     }
 
     const plugin = this.plugins.require(pluginId);
-    await interaction.reply(`Starting ${plugin.displayName} conversation...`);
-
-    try {
-      await this.router.route(userId, channelId, message);
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      await this.platform.send(channelId, {
-        text: `\u274C Failed: ${errMsg}`,
-        parseMode: "plain",
-      });
-      this.conversations.end(userId, channelId);
-    }
+    await interaction.reply(`Started ${plugin.displayName} conversation. Send a message to begin.`);
   }
 
   private async handleEnd(interaction: ChatInputCommandInteraction): Promise<void> {

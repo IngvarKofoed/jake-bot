@@ -50,3 +50,8 @@
 ## 9. Improve pre-execute logging in Router
 
 - Enhanced router log before `plugin.execute()` to include session ID (or "new"), workdir, and message length
+
+## 10. Slash commands no longer send an initial message to the plugin
+
+- Removed required `message` option from `/claude`, `/gemini`, and `/codex` slash commands
+- Start command now only opens the conversation; the user's first channel message triggers the plugin
