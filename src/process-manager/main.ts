@@ -60,6 +60,14 @@ httpServer.listen(port, () => {
   log.info(TAG, `Process Manager listening on http://localhost:${port}`);
   log.info(TAG, `  SSE endpoint: http://localhost:${port}/sse`);
   log.info(TAG, `  Health check: http://localhost:${port}/health`);
+
+  supervisor.start({
+    name: "jake-bot",
+    command: "npx",
+    args: ["tsx", "src/index.ts"],
+    cwd: process.cwd(),
+    pipeOutput: true,
+  });
 });
 
 // Graceful shutdown

@@ -56,6 +56,7 @@ export function createProcessManagerMcp(supervisor: ProcessSupervisor) {
         args: existing.args,
         cwd: existing.cwd,
         env: existing.env,
+        pipeOutput: existing.pipeOutput,
       });
       return {
         content: [{ type: "text" as const, text: JSON.stringify(restarted) }],

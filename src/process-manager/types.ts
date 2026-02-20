@@ -13,6 +13,7 @@ export interface ManagedProcess {
   args: string[];
   cwd: string;
   env?: Record<string, string>;
+  pipeOutput?: boolean;
   status: ProcessStatus;
   pid?: number;
   exitCode?: number | null;

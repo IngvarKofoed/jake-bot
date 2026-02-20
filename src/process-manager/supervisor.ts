@@ -11,6 +11,7 @@ export class ProcessSupervisor {
     args?: string[];
     cwd: string;
     env?: Record<string, string>;
+    pipeOutput?: boolean;
   }): Promise<ManagedProcess> {
     const existing = this.processes.get(input.name);
     if (existing && (existing.status === "running" || existing.status === "starting")) {
@@ -23,6 +24,7 @@ export class ProcessSupervisor {
       args: input.args ?? [],
       cwd: input.cwd,
       env: input.env,
+      pipeOutput: input.pipeOutput ?? existing?.pipeOutput,
       status: "starting",
       startedAt: Date.now(),
       stdout: new RingBuffer(),
@@ -41,8 +43,16 @@ export class ProcessSupervisor {
     managed.pid = child.pid;
     managed.status = "running";
 
-    child.stdout.on("data", (buf: Buffer) => managed.stdout.append(buf.toString()));
-    child.stderr.on("data", (buf: Buffer) => managed.stderr.append(buf.toString()));
+    child.stdout.on("data", (buf: Buffer) => {
+      const str = buf.toString();
+      managed.stdout.append(str);
+      if (managed.pipeOutput) process.stdout.write(buf);
+    });
+    child.stderr.on("data", (buf: Buffer) => {
+      const str = buf.toString();
+      managed.stderr.append(str);
+      if (managed.pipeOutput) process.stderr.write(buf);
+    });
     child.on("exit", (code) => {
       managed.exitCode = code;
       managed.stoppedAt = Date.now();

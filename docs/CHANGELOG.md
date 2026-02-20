@@ -77,3 +77,11 @@
 
 - `stopTyping()` was called before `finalize()`, but `finalize()` restarts the typing timer — so the indicator was never cleared
 - Swapped the order: `finalize()` first, then `stopTyping()`
+
+## 15. Process manager auto-starts jake-bot
+
+- Added `pipeOutput` flag to `ManagedProcess` type and `supervisor.start()` input
+- When `pipeOutput` is true, stdout/stderr from the child process are piped to the parent's console
+- Process manager auto-starts jake-bot with `pipeOutput: true` on startup
+- `restart_process` MCP tool preserves `pipeOutput` across restarts
+- Enables single-command startup: `npm run process-manager` runs both the MCP daemon and jake-bot
