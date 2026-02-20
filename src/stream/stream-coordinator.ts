@@ -134,7 +134,7 @@ export class StreamCoordinator {
           if (ev.block.kind === "tool_use") {
             await finalize();
             buffer = this.renderer.renderToolHeader(ev.block.toolName, ev.block.input);
-            await flush();
+            await finalize();
           } else if (ev.block.kind === "tool_result") {
             const text =
               ev.block.content.format === "text"
@@ -142,8 +142,11 @@ export class StreamCoordinator {
                 : ev.block.content.format === "parts"
                   ? ev.block.content.parts.map((p) => p.text).join("\n")
                   : "";
-            buffer += "\n" + this.renderer.renderToolResult(text, ev.block.isError);
-            await finalize();
+            const rendered = this.renderer.renderToolResult(text, ev.block.isError);
+            if (rendered) {
+              buffer += rendered;
+              await finalize();
+            }
           } else {
             buffer += this.renderer.renderEmit(ev);
             await split();

@@ -66,3 +66,9 @@
 - Added optional `sendTyping` method to `ChatPlatform` interface
 - Implemented `sendTyping` in `DiscordPlatform` via `channel.sendTyping()`
 - `StreamCoordinator` triggers typing on run start and after each `finalize()` (tool use gaps), stops on message send or stream end
+
+## 13. Fix tool usage and text running together in Discord
+
+- Tool header was flushed but not finalized, so subsequent text was edited into the same message
+- Changed `tool_use` handling to `finalize()` after setting the buffer, ensuring the tool header is sent as its own message
+- Cleaned up `tool_result` to skip sending when the rendered result is empty
