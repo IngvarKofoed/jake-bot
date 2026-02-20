@@ -46,7 +46,9 @@ export class Router {
     const plugin = this.plugins.require(convo.pluginId);
     log.info(
       "router",
-      `user=${userId} channel=${channelId} plugin=${plugin.id} msg=${message.length} chars`,
+      `Executing ${plugin.id} for user=${userId} channel=${channelId} ` +
+        `session=${convo.sessionId ?? "new"} workdir=${convo.workdir} ` +
+        `messageLength=${message.length}`,
     );
     const events = plugin.execute(
       {

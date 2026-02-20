@@ -46,3 +46,7 @@
 ## 8. Add conversation lifecycle logging to ActiveConversations
 
 - Log start, end, resume, and session ID capture in `ActiveConversations` so inbound adapter calls are visible in the core
+
+## 9. Improve pre-execute logging in Router
+
+- Enhanced router log before `plugin.execute()` to include session ID (or "new"), workdir, and message length
