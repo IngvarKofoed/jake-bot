@@ -22,3 +22,9 @@
 
 - The Claude SDK yields `SDKAssistantMessage` with content at `msg.message.content`, but the event mapper was checking `msg.content` — so all assistant text, tool use, and thinking blocks were silently dropped
 - Updated `mapClaudeMessage` to extract content from the correct path via `extractContent()` helper
+
+## 5. Add timestamped BotEvent logging
+
+- Added `src/core/logger.ts` with ISO-timestamped `log.info/warn/error(tag, msg)` helper
+- Log all BotEvents in `StreamCoordinator` (skip `block_delta` to avoid noise; report content length at `block_close`)
+- Log routed messages in `Router` with user/channel/plugin context

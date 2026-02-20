@@ -5,6 +5,7 @@ import type { CompleteEvent, FatalErrorEvent } from "../stream/events.js";
 import { StreamCoordinator } from "../stream/stream-coordinator.js";
 import { ActiveConversations } from "./active-conversations.js";
 import { PluginRegistry } from "./plugin-registry.js";
+import { log } from "./logger.js";
 
 export interface RouteResult {
   event?: CompleteEvent | FatalErrorEvent;
@@ -43,6 +44,10 @@ export class Router {
     }
 
     const plugin = this.plugins.require(convo.pluginId);
+    log.info(
+      "router",
+      `user=${userId} channel=${channelId} plugin=${plugin.id} msg=${message.length} chars`,
+    );
     const events = plugin.execute(
       {
         workdir: convo.workdir,
