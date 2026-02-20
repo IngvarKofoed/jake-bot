@@ -1190,6 +1190,7 @@ export interface ChatPlatform {
   send(channelId: string, msg: OutboundMessage): Promise<MessageRef>;
   edit(ref: MessageRef, msg: OutboundMessage): Promise<void>;
   delete?(ref: MessageRef): Promise<void>;
+  sendTyping?(channelId: string): Promise<void>;
 }
 ```
 
