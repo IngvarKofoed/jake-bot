@@ -25,6 +25,10 @@ interface ToolResultBlock {
   is_error?: boolean;
   content: string | Array<{ type: string; text?: string }> | null | undefined;
 }
+interface AssistantMessage {
+  type: "assistant";
+  message: { content: ContentBlock[] };
+}
 interface ResultMessage {
   type: "result";
   session_id?: string;
@@ -33,9 +37,7 @@ interface ResultMessage {
 }
 
 type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock;
-type SdkMessage =
-  | { type?: string; content?: ContentBlock[] }
-  | ResultMessage;
+type SdkMessage = AssistantMessage | ResultMessage | { type?: string };
 
 let blockSeq = 0;
 const nextId = () => `b${blockSeq++}`;
@@ -46,8 +48,9 @@ export function* mapClaudeMessage(
 ): Generator<BotEvent> {
   const ts = Date.now();
 
-  if ("content" in msg && Array.isArray(msg.content)) {
-    for (const block of msg.content) {
+  const content = extractContent(msg);
+  if (content) {
+    for (const block of content) {
       if (block.type === "text") {
         const id = nextId();
         yield { type: "block_open", pluginId, ts, block: { id, kind: "text" } };
@@ -129,6 +132,17 @@ function normalizeToolResultContent(
     return parts.length > 0 ? { format: "parts", parts } : { format: "empty" };
   }
   return { format: "empty" };
+}
+
+function extractContent(m: SdkMessage): ContentBlock[] | undefined {
+  // SDKAssistantMessage: { type: 'assistant', message: { content: [...] } }
+  if (
+    (m as AssistantMessage).type === "assistant" &&
+    Array.isArray((m as AssistantMessage).message?.content)
+  ) {
+    return (m as AssistantMessage).message.content;
+  }
+  return undefined;
 }
 
 function isResultMessage(m: unknown): m is ResultMessage {

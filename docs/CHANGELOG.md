@@ -17,3 +17,8 @@
 
 - Validate `workdir` exists in `ActiveConversations.start()` and `.resume()` before passing to plugins
 - A non-existent cwd causes `spawn` to throw ENOENT blaming the executable, which is misleading
+
+## 4. Fix Claude responses not appearing in Discord
+
+- The Claude SDK yields `SDKAssistantMessage` with content at `msg.message.content`, but the event mapper was checking `msg.content` — so all assistant text, tool use, and thinking blocks were silently dropped
+- Updated `mapClaudeMessage` to extract content from the correct path via `extractContent()` helper
