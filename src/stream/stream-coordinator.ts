@@ -50,6 +50,7 @@ export class StreamCoordinator {
 
       const text = buffer.slice(0, charLimit);
       if (!msg || !supportsEdit) {
+        stopTyping();
         msg = await this.platform.send(channelId, { text, parseMode: "markdown" });
       } else {
         await this.platform.edit(msg, { text, parseMode: "markdown" });
@@ -78,11 +79,30 @@ export class StreamCoordinator {
       }
       msg = undefined;
       buffer = "";
+      startTyping();
     };
 
     const lens = {
       contentLength: (id: string) => openBlocks.get(id)?.content.length ?? 0,
     };
+
+    // Show "typing..." indicator during idle gaps (before first token, during tool execution).
+    // Discord's indicator expires after ~10s, so refresh every 8s.
+    // Typing stops automatically when a message is sent; restarts after finalize().
+    let typingTimer: ReturnType<typeof setInterval> | undefined;
+    const startTyping = () => {
+      if (!this.platform.sendTyping || typingTimer !== undefined) return;
+      const fire = () => void this.platform.sendTyping!(channelId).catch(() => {});
+      fire();
+      typingTimer = setInterval(fire, 8_000);
+    };
+    const stopTyping = () => {
+      if (typingTimer !== undefined) {
+        clearInterval(typingTimer);
+        typingTimer = undefined;
+      }
+    };
+    startTyping();
 
     for await (const ev of events) {
       logBotEvent(ev, lens);
@@ -144,6 +164,7 @@ export class StreamCoordinator {
       if (ev.type === "complete" || ev.type === "fatal_error") break;
     }
 
+    stopTyping();
     await finalize();
     return result;
   }

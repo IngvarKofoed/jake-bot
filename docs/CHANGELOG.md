@@ -60,3 +60,9 @@
 
 - Relative paths (e.g. `private/jake-bot`) are now resolved against `homedir()` in `ActiveConversations`
 - Default workdir fallback changed from `process.cwd()` to `homedir()` in config
+
+## 12. Show typing indicator while waiting for AI response
+
+- Added optional `sendTyping` method to `ChatPlatform` interface
+- Implemented `sendTyping` in `DiscordPlatform` via `channel.sendTyping()`
+- `StreamCoordinator` triggers typing on run start and after each `finalize()` (tool use gaps), stops on message send or stream end

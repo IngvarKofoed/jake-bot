@@ -23,4 +23,9 @@ export class DiscordPlatform implements ChatPlatform {
     const message = await channel.messages.fetch(ref.messageId);
     await message.edit(msg.text);
   }
+
+  async sendTyping(channelId: string): Promise<void> {
+    const channel = (await this.client.channels.fetch(channelId)) as TextChannel;
+    await channel.sendTyping();
+  }
 }
