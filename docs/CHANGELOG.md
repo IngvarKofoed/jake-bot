@@ -85,3 +85,16 @@
 - Process manager auto-starts jake-bot with `pipeOutput: true` on startup
 - `restart_process` MCP tool preserves `pipeOutput` across restarts
 - Enables single-command startup: `npm run process-manager` runs both the MCP daemon and jake-bot
+
+## 16. Switch process manager MCP from SSE to Streamable HTTP
+
+- Replaced `SSEServerTransport` (`/sse` + `/messages`) with stateless `StreamableHTTPServerTransport` on `/mcp`
+- Uses `sessionIdGenerator: undefined` (stateless mode) matching the original Python `stateless_http=True`
+- Each POST to `/mcp` creates a fresh transport+server — no session tracking needed
+- Fixes CLI plugins (Claude, Gemini) which were already configured for `http://localhost:8901/mcp`
+
+## 17. Migrate to `@anthropic-ai/claude-agent-sdk` + zod v4
+
+- Replaced `@anthropic-ai/claude-code` with `@anthropic-ai/claude-agent-sdk` — fixes stale terms-acceptance check (exit code 1)
+- Upgraded zod from v3 to v4; fixed breaking `z.record()` call in `mcp-server.ts` (now requires explicit key+value types)
+- Removed debug stderr and MCP config logging from Claude plugin

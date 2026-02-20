@@ -1,4 +1,4 @@
-import { query } from "@anthropic-ai/claude-code";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { CliPlugin, ExecuteInput, PluginContext, ConversationInfo } from "../types.js";
 import type { BotEvent } from "../../stream/events.js";
 import { mapClaudeMessage } from "./event-mapper.js";
@@ -18,16 +18,18 @@ export class ClaudePlugin implements CliPlugin {
   ): AsyncGenerator<BotEvent> {
     const mcpEndpoint = ctx.mcpEndpoints.find((e) => e.name === "process-manager");
 
+    const mcpServers = mcpEndpoint
+      ? { "process-manager": { type: "http" as const, url: mcpEndpoint.url } }
+      : undefined;
+
     const options = {
       permissionMode: "bypassPermissions" as const,
       maxTurns: this.maxTurns,
       maxBudgetUsd: this.maxBudgetUsd,
       cwd: input.workdir,
-      settingSources: ["user", "project", "local"] as const,
+      settingSources: ["user", "project", "local"] as ("user" | "project" | "local")[],
       resume: input.sessionId,
-      mcpServers: mcpEndpoint
-        ? { "process-manager": { type: "http" as const, url: mcpEndpoint.url } }
-        : undefined,
+      mcpServers,
     };
 
     for await (const msg of query({ prompt: input.message, options })) {

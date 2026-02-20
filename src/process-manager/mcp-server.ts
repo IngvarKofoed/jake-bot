@@ -18,7 +18,7 @@ export function createProcessManagerMcp(supervisor: ProcessSupervisor) {
       command: z.string().describe("Executable to run"),
       args: z.array(z.string()).optional().describe("Command arguments"),
       cwd: z.string().describe("Working directory"),
-      env: z.record(z.string()).optional().describe("Extra env vars"),
+      env: z.record(z.string(), z.string()).optional().describe("Extra env vars"),
     },
     async (input) => ({
       content: [{ type: "text" as const, text: JSON.stringify(await supervisor.start(input)) }],
