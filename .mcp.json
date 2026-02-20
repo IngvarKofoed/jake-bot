@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "process-manager": {
-      "command": "/Users/ingvar/data/jake-bot/venv/bin/python",
-      "args": ["-m", "jake_bot.process_manager"],
-      "cwd": "/Users/ingvar/data/jake-bot"
-    }
-  }
-}
