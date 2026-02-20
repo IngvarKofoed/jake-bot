@@ -84,16 +84,9 @@ async def stream_to_discord(
     current_block_id: str | None = None
     current_block_render_start: int = 0  # position in buffer where current block's render begins
 
-    # Tool tracking — transient indicator + thread archive
+    # Tool tracking
     tool_records: list[ToolRecord] = []
     tool_id_to_record: dict[str, ToolRecord] = {}
-    tool_indicator_text: str | None = None
-
-    def strip_tool_indicator() -> None:
-        nonlocal buffer, tool_indicator_text
-        if tool_indicator_text and buffer.endswith(tool_indicator_text):
-            buffer = buffer[: -len(tool_indicator_text)]
-        tool_indicator_text = None
 
     async def flush(force: bool = False) -> None:
         nonlocal current_msg, last_edit, buffer
@@ -130,6 +123,16 @@ async def stream_to_discord(
             buffer = (fence + "\n" + overflow) if fence else overflow
             current_block_render_start = 0
 
+    async def finalize_message() -> None:
+        """Flush the current buffer and start a fresh message."""
+        nonlocal buffer, current_msg, current_block_render_start
+        if buffer:
+            await split_if_needed()
+            await flush(force=True)
+        current_msg = None
+        buffer = ""
+        current_block_render_start = 0
+
     async for event in events:
         # Filter out system messages (e.g. init) — not useful in Discord output
         if event.block_type == ResponseBlockType.SYSTEM:
@@ -139,7 +142,6 @@ async def stream_to_discord(
         if event.type == PluginEventType.BLOCK_OPEN:
             bid = event.block_id
             if bid:
-                strip_tool_indicator()
                 open_blocks[bid] = _OpenBlock(
                     block_type=event.block_type or ResponseBlockType.TEXT,
                     metadata=event.metadata,
@@ -181,7 +183,7 @@ async def stream_to_discord(
             block_type = event.block_type or ResponseBlockType.TEXT
 
             if block_type == ResponseBlockType.TOOL_USE:
-                # Record for thread archive
+                # Record for archive
                 rec = ToolRecord(
                     tool_name=event.metadata.get("tool_name", "tool"),
                     tool_input=event.metadata.get("input", {}),
@@ -191,28 +193,36 @@ async def stream_to_discord(
                 if rec.tool_id:
                     tool_id_to_record[rec.tool_id] = rec
 
-                # Transient indicator — replace previous one
-                strip_tool_indicator()
-                indicator = formatter.format_emit(block_type, event.content, event.metadata)
-                tool_indicator_text = indicator
-                buffer += indicator
+                # Finalize whatever was in the current message
+                await finalize_message()
 
+                # Start a new message with the tool header
+                buffer = formatter.format_tool_header(event.metadata)
                 current_block_id = None
                 current_block_render_start = len(buffer)
-                await split_if_needed()
                 await flush()
 
             elif block_type == ResponseBlockType.TOOL_RESULT:
-                # Don't render in main message; fill in the matching record
+                # Fill in the matching record
                 use_id = event.metadata.get("tool_use_id", "")
                 if use_id and use_id in tool_id_to_record:
                     rec = tool_id_to_record[use_id]
                     rec.result_content = event.content
                     rec.is_error = event.metadata.get("is_error", False)
 
+                # Append compact result to the current tool message
+                rendered = formatter.format_tool_result_compact(
+                    event.content, event.metadata,
+                )
+                buffer += "\n" + rendered if rendered else ""
+                current_block_id = None
+                current_block_render_start = len(buffer)
+
+                # Finalize this tool card — next content gets a fresh message
+                await finalize_message()
+
             else:
-                # TEXT, THINKING, ERROR, etc. — strip indicator and render normally
-                strip_tool_indicator()
+                # TEXT, THINKING, ERROR, etc. — render normally
                 rendered = formatter.format_emit(block_type, event.content, event.metadata)
                 buffer += rendered
                 current_block_id = None
@@ -221,7 +231,6 @@ async def stream_to_discord(
                 await flush()
 
         elif event.type in (PluginEventType.COMPLETE, PluginEventType.ERROR):
-            strip_tool_indicator()
             final_event = event
             break
 
@@ -229,18 +238,5 @@ async def stream_to_discord(
     if buffer:
         await split_if_needed()
         await flush(force=True)
-
-    # Post tool usage thread if any tools were used.
-    # TODO: make this user-configurable (e.g. per-guild or per-user setting)
-    _enable_tool_threads = False
-    if _enable_tool_threads and tool_records:
-        if not current_msg:
-            current_msg = await channel.send("-# Done.")
-        try:
-            thread = await current_msg.create_thread(name="Tool Usage")
-            for entry_text in formatter.format_tool_thread(tool_records):
-                await thread.send(entry_text)
-        except discord.HTTPException:
-            log.warning("Failed to create tool usage thread")
 
     return final_event

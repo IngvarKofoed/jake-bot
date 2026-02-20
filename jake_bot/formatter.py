@@ -51,6 +51,18 @@ class Formatter(ABC):
         ...
 
     @abstractmethod
+    def format_tool_header(self, metadata: dict[str, Any]) -> str:
+        """Render the header line for a standalone tool-call message."""
+        ...
+
+    @abstractmethod
+    def format_tool_result_compact(
+        self, content: str, metadata: dict[str, Any]
+    ) -> str:
+        """Render a tool result truncated to a few lines, for a tool card."""
+        ...
+
+    @abstractmethod
     def format_tool_thread(
         self,
         tool_records: list[ToolRecord],
@@ -66,8 +78,12 @@ class Formatter(ABC):
 # Match bare URLs not already inside <angle brackets>
 _BARE_URL_RE = re.compile(r"(?<![<(])(https?://\S+)")
 
-# Maximum characters to show for tool result output
+# Maximum characters to show for tool result output (thread archive)
 _TOOL_RESULT_MAX_CHARS = 800
+
+# Maximum lines/chars for inline tool result (shown in the message flow)
+_TOOL_RESULT_INLINE_MAX_LINES = 6
+_TOOL_RESULT_INLINE_MAX_CHARS = 400
 
 # Discord message limit (same as stream_coordinator)
 DISCORD_CHAR_LIMIT = 1900
@@ -196,33 +212,47 @@ class DiscordFormatter(Formatter):
             messages.append(current)
         return messages
 
-    # -- private helpers ---------------------------------------------------
+    # -- tool card (standalone message per tool call) ---------------------
 
-    _TOOL_PREVIEW_MAX_CHARS = 40
-
-    def _render_tool_use(
-        self, content: str, metadata: dict[str, Any]
-    ) -> str:
+    def format_tool_header(self, metadata: dict[str, Any]) -> str:
         tool_name = metadata.get("tool_name", "tool")
         tool_input = metadata.get("input", {})
         if tool_input:
             preview = ", ".join(f"{k}={v!r}" for k, v in tool_input.items())
-            if len(preview) > self._TOOL_PREVIEW_MAX_CHARS:
-                preview = preview[:self._TOOL_PREVIEW_MAX_CHARS] + "…"
-            return f"\n-# 🔧 {tool_name}({preview})\n"
-        return f"\n-# 🔧 {tool_name}...\n"
+            if len(preview) > 80:
+                preview = preview[:80] + "…"
+            return f"-# 🔧 {tool_name}({preview})"
+        return f"-# 🔧 {tool_name}"
 
-    def _render_tool_result(
+    def format_tool_result_compact(
         self, content: str, metadata: dict[str, Any]
     ) -> str:
         if not content:
             return ""
-
         is_error = metadata.get("is_error", False)
         prefix = "⚠️ " if is_error else ""
+        lines = content.split("\n")
+        max_lines = _TOOL_RESULT_INLINE_MAX_LINES
+        if len(lines) > max_lines:
+            truncated = "\n".join(lines[:max_lines])
+            remaining = len(lines) - max_lines
+            truncated += f"\n… ({remaining} more lines)"
+        else:
+            truncated = content
+        # Also cap total chars
+        max_chars = _TOOL_RESULT_INLINE_MAX_CHARS
+        if len(truncated) > max_chars:
+            truncated = truncated[:max_chars] + "\n… (truncated)"
+        return f"{prefix}```\n{truncated}\n```"
 
-        truncated = content[:_TOOL_RESULT_MAX_CHARS]
-        if len(content) > _TOOL_RESULT_MAX_CHARS:
-            truncated += f"\n… ({len(content) - _TOOL_RESULT_MAX_CHARS} chars truncated)"
+    # -- private helpers (delegating to the new public methods) --------------
 
-        return f"\n{prefix}```\n{truncated}\n```\n"
+    def _render_tool_use(
+        self, content: str, metadata: dict[str, Any]
+    ) -> str:
+        return self.format_tool_header(metadata)
+
+    def _render_tool_result(
+        self, content: str, metadata: dict[str, Any]
+    ) -> str:
+        return self.format_tool_result_compact(content, metadata)
