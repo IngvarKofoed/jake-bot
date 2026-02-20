@@ -21,6 +21,7 @@ Multi-model Discord bot (Claude, Gemini, Codex). TypeScript, ESM, Node.js.
 - Discriminated unions over class hierarchies for data types
 - Async generators for streaming — no queue bridges
 - Platform-agnostic core: never import discord.js outside `src/platform/discord.ts` and `src/index.ts`
+- All logging goes through `src/core/logger.ts` — never use raw `console.log/warn/error`
 
 ## Changelog
 
