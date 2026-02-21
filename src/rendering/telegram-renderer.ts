@@ -42,6 +42,10 @@ export class TelegramRenderer implements Renderer {
     return `<b>${toolName}</b>(${preview})`;
   }
 
+  renderFatalError(message: string): string {
+    return `\n<b>\u274C ${message}</b>\n`;
+  }
+
   renderToolResult(content: string, isError: boolean): string {
     if (!content) return "";
     const prefix = isError ? "Error: " : "";

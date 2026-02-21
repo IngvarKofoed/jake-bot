@@ -55,6 +55,20 @@ export class DiscordRenderer implements Renderer {
     return `${prefix}\`\`\`\n${truncated}\n\`\`\``;
   }
 
+  renderFatalError(message: string): string {
+    return `\n\u274C ${message}\n`;
+  }
+
+  renderFooter(durationMs?: number): string {
+    if (durationMs === undefined) return "";
+    const seconds = durationMs / 1000;
+    const label =
+      seconds < 60
+        ? `${seconds.toFixed(1)}s`
+        : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+    return `-# *Duration: ${label}*`;
+  }
+
   suppressEmbeds(text: string): string {
     return text.replace(BARE_URL_RE, "<$1>");
   }

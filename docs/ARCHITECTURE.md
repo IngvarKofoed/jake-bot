@@ -1278,6 +1278,12 @@ export interface Renderer {
   /** Render a truncated tool result. */
   renderToolResult(content: string, isError: boolean): string;
 
+  /** Render a fatal error message. */
+  renderFatalError(message: string): string;
+
+  /** Render a completion footer (duration, cost, etc.). */
+  renderFooter?(durationMs?: number, costUsd?: number): string;
+
   /** Suppress embed previews (platform-specific, optional). */
   suppressEmbeds?(text: string): string;
 }
@@ -1341,6 +1347,19 @@ export class DiscordRenderer implements Renderer {
     return `${prefix}\`\`\`\n${truncated}\n\`\`\``;
   }
 
+  renderFatalError(message: string): string {
+    return `\n❌ ${message}\n`;
+  }
+
+  renderFooter(durationMs?: number): string {
+    if (durationMs === undefined) return "";
+    const seconds = durationMs / 1000;
+    const label = seconds < 60
+      ? `${seconds.toFixed(1)}s`
+      : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+    return `-# *Duration: ${label}*`;
+  }
+
   suppressEmbeds(text: string): string {
     return text.replace(BARE_URL_RE, "<$1>");
   }
@@ -1349,8 +1368,9 @@ export class DiscordRenderer implements Renderer {
 
 ### Stream Coordinator
 
-The stream coordinator is now platform-agnostic. It takes a `ChatPlatform`
-and a `Renderer`, never imports discord.js or any platform SDK:
+The stream coordinator is platform-agnostic. It takes a `ChatPlatform`
+and a `Renderer`, never imports discord.js or any platform SDK, and
+contains no text formatting — all formatting is delegated to the renderer:
 
 ```ts
 // src/stream/stream-coordinator.ts
@@ -1486,12 +1506,17 @@ export class StreamCoordinator {
           break; // fall through to final flush
 
         case "fatal_error":
-          buffer += `\n❌ ${ev.error.message}\n`;
+          buffer += this.renderer.renderFatalError(ev.error.message);
           result = ev;
           break;
       }
 
       if (ev.type === "complete" || ev.type === "fatal_error") break;
+    }
+
+    if (result?.type === "complete" && this.renderer.renderFooter) {
+      const footer = this.renderer.renderFooter(result.durationMs, result.costUsd);
+      if (footer) buffer += `${buffer ? "\n" : ""}${footer}`;
     }
 
     await finalize();
@@ -1526,6 +1551,7 @@ export class StreamCoordinator {
 | Gemini integration | `child_process.spawn` + `readline` | Gemini CLI has no TS SDK; NDJSON streaming is natural with readline |
 | Platform abstraction | `ChatPlatform` interface with `PlatformConstraints` | One coordinator works across Discord, Telegram, WhatsApp |
 | Renderer vs Platform | Separate interfaces | Renderer = "how does a tool header look?"; Platform = "send this string to the user" |
+| No formatting in coordinator | All text formatting in `Renderer` | StreamCoordinator only handles buffering, splitting, and flush timing |
 | Formatter method signatures | Take typed event objects, not `(content, metadata)` | No more `metadata.get("tool_name", "tool")` |
 
 ## Migration Notes

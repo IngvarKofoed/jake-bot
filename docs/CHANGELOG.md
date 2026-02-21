@@ -98,3 +98,10 @@
 - Replaced `@anthropic-ai/claude-code` with `@anthropic-ai/claude-agent-sdk` — fixes stale terms-acceptance check (exit code 1)
 - Upgraded zod from v3 to v4; fixed breaking `z.record()` call in `mcp-server.ts` (now requires explicit key+value types)
 - Removed debug stderr and MCP config logging from Claude plugin
+
+## 18. Show response duration and move formatting out of StreamCoordinator
+
+- Added `renderFatalError(message)` and optional `renderFooter(durationMs, costUsd)` to `Renderer` interface
+- Implemented in all three renderers (Discord, Telegram, WhatsApp)
+- `StreamCoordinator` no longer contains any formatting — delegates fatal errors and completion footer to the renderer
+- Discord footer renders duration as subtext + italic (`-# *5.2s*`)

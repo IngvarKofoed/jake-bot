@@ -159,12 +159,17 @@ export class StreamCoordinator {
           break;
 
         case "fatal_error":
-          buffer += `\n\u274C ${ev.error.message}\n`;
+          buffer += this.renderer.renderFatalError(ev.error.message);
           result = ev;
           break;
       }
 
       if (ev.type === "complete" || ev.type === "fatal_error") break;
+    }
+
+    if (result?.type === "complete" && this.renderer.renderFooter) {
+      const footer = this.renderer.renderFooter(result.durationMs, result.costUsd);
+      if (footer) buffer += `${buffer ? "\n" : ""}${footer}`;
     }
 
     await finalize();

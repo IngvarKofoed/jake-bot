@@ -13,6 +13,12 @@ export interface Renderer {
   /** Render a truncated tool result. */
   renderToolResult(content: string, isError: boolean): string;
 
+  /** Render a fatal error message. */
+  renderFatalError(message: string): string;
+
+  /** Render a completion footer (duration, cost, etc.). */
+  renderFooter?(durationMs?: number, costUsd?: number): string;
+
   /** Suppress embed previews (platform-specific, optional). */
   suppressEmbeds?(text: string): string;
 }

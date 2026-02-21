@@ -42,6 +42,10 @@ export class WhatsAppRenderer implements Renderer {
     return `*${toolName}*(${preview})`;
   }
 
+  renderFatalError(message: string): string {
+    return `\n\u274C ${message}\n`;
+  }
+
   renderToolResult(content: string, isError: boolean): string {
     if (!content) return "";
     const prefix = isError ? "Error: " : "";

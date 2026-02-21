@@ -77,7 +77,7 @@ All plugin output flows through a single typed event stream (`src/stream/events.
 Plugins implement `CliPlugin` — an async generator interface that yields `BotEvent`s. No queue bridges, no async workarounds. Adding a new CLI = one plugin file + one event mapper.
 
 ### Platform Abstraction
-`ChatPlatform` (transport: send/edit) and `Renderer` (formatting) are separate interfaces. `StreamCoordinator` uses `PlatformConstraints` (charLimit, supportsEdit, editRateLimitMs) to adapt behavior per platform — no platform-specific imports in the coordinator.
+`ChatPlatform` (transport: send/edit) and `Renderer` (formatting) are separate interfaces. `StreamCoordinator` uses `PlatformConstraints` (charLimit, supportsEdit, editRateLimitMs) to adapt behavior per platform — no platform-specific imports or text formatting in the coordinator. All formatting (tool headers, errors, footers) is delegated to the `Renderer`.
 
 ### Process Manager
 Long-running processes managed via MCP protocol. `ProcessSupervisor` handles spawn + drain + kill (process groups on Unix, tree-kill on Windows). Exposed as an SSE-based MCP HTTP server that all CLI plugins connect to.
