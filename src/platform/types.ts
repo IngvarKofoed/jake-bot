@@ -27,4 +27,5 @@ export interface ChatPlatform {
   edit(ref: MessageRef, msg: OutboundMessage): Promise<void>;
   delete?(ref: MessageRef): Promise<void>;
   sendTyping?(channelId: string): Promise<void>;
+  stopTyping?(channelId: string): Promise<void>;
 }

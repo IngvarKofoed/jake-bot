@@ -28,4 +28,12 @@ export class DiscordPlatform implements ChatPlatform {
     const channel = (await this.client.channels.fetch(channelId)) as TextChannel;
     await channel.sendTyping();
   }
+
+  async stopTyping(channelId: string): Promise<void> {
+    // Discord has no "cancel typing" API — the indicator persists ~10s after sendTyping().
+    // The only way to clear it is sending a message, so send and immediately delete one.
+    const channel = (await this.client.channels.fetch(channelId)) as TextChannel;
+    const msg = await channel.send("\u200B");
+    await msg.delete();
+  }
 }

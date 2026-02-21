@@ -50,8 +50,11 @@ export class StreamCoordinator {
 
       const text = buffer.slice(0, charLimit);
       if (!msg || !supportsEdit) {
-        stopTyping();
         msg = await this.platform.send(channelId, { text, parseMode: "markdown" });
+        // Discord auto-clears typing on message send; re-fire immediately to keep it visible
+        if (this.platform.sendTyping && typingTimer !== undefined) {
+          void this.platform.sendTyping(channelId).catch(() => {});
+        }
       } else {
         await this.platform.edit(msg, { text, parseMode: "markdown" });
       }
@@ -79,16 +82,15 @@ export class StreamCoordinator {
       }
       msg = undefined;
       buffer = "";
-      startTyping();
     };
 
     const lens = {
       contentLength: (id: string) => openBlocks.get(id)?.content.length ?? 0,
     };
 
-    // Show "typing..." indicator during idle gaps (before first token, during tool execution).
+    // Show "typing..." indicator continuously from start until completion.
     // Discord's indicator expires after ~10s, so refresh every 8s.
-    // Typing stops automatically when a message is sent; restarts after finalize().
+    // Discord auto-clears typing on message send, so flush() re-fires immediately.
     let typingTimer: ReturnType<typeof setInterval> | undefined;
     const startTyping = () => {
       if (!this.platform.sendTyping || typingTimer !== undefined) return;
@@ -96,10 +98,11 @@ export class StreamCoordinator {
       fire();
       typingTimer = setInterval(fire, 8_000);
     };
-    const stopTyping = () => {
+    const stopTyping = async () => {
       if (typingTimer !== undefined) {
         clearInterval(typingTimer);
         typingTimer = undefined;
+        await this.platform.stopTyping?.(channelId).catch(() => {});
       }
     };
     startTyping();
@@ -172,8 +175,8 @@ export class StreamCoordinator {
       if (footer) buffer += `${buffer ? "\n" : ""}${footer}`;
     }
 
+    await stopTyping();
     await finalize();
-    stopTyping();
     return result;
   }
 }

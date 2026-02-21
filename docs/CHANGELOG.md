@@ -105,3 +105,11 @@
 - Implemented in all three renderers (Discord, Telegram, WhatsApp)
 - `StreamCoordinator` no longer contains any formatting — delegates fatal errors and completion footer to the renderer
 - Discord footer renders duration as subtext + italic (`-# *5.2s*`)
+
+## 19. Fix typing indicator gaps and post-completion persistence
+
+- Typing now runs continuously from start to completion — no longer stopped/restarted at content boundaries
+- Removed `stopTyping()` from `flush()` so the interval keeps running during streaming
+- Removed `startTyping()` from `finalize()` so typing isn't re-fired after the final message
+- Re-fire `sendTyping()` immediately after each `send()` since Discord auto-clears typing on message send
+- Added `stopTyping` to `ChatPlatform` interface; Discord implementation sends+deletes a zero-width space message to force-clear the indicator
