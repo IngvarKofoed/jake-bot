@@ -87,7 +87,7 @@ jake-bot/
     plugins/
       types.ts                      # CliPlugin interface + PluginContext
       claude/
-        plugin.ts                   # @anthropic-ai/claude-code SDK
+        plugin.ts                   # @anthropic-ai/claude-agent-sdk
         event-mapper.ts             # SDK messages → BotEvent
       gemini/
         plugin.ts                   # child_process spawn + readline
@@ -101,13 +101,14 @@ jake-bot/
       router.ts                     # message routing
       active-conversations.ts       # (user, channel) → {plugin, workdir, sessionId}
       plugin-registry.ts            # plugin discovery + lookup
+      logger.ts                     # timestamped Logger interface + logBotEvent
 
     process-manager/
       types.ts                      # ManagedProcess, ProcessStatus, RingBuffer
       supervisor.ts                 # spawn, drain, kill process trees
       mcp-server.ts                 # @modelcontextprotocol/sdk MCP tools
+      main.ts                       # standalone Streamable HTTP daemon on :8901
 
-  tests/
   docs/
   package.json
   tsconfig.json
@@ -350,6 +351,7 @@ function processEvent(ev: BotEvent): void {
 // src/plugins/types.ts
 
 import type { BotEvent } from "../stream/events.js";
+import type { Logger } from "../core/logger.js";
 
 export interface ConversationInfo {
   id: string;
@@ -370,7 +372,7 @@ export interface ExecuteInput {
  */
 export interface PluginContext {
   mcpEndpoints: ReadonlyArray<{ name: string; url: string }>;
-  logger: Pick<Console, "info" | "warn" | "error">;
+  logger: Logger; // Logger.info/warn/error(tag: string, msg: string) — see src/core/logger.ts
 }
 
 /**
@@ -400,14 +402,14 @@ export interface CliPlugin {
 
 ### Claude Code Plugin — SDK Direct
 
-The `@anthropic-ai/claude-code` TypeScript SDK is first-party. No subprocess,
+The `@anthropic-ai/claude-agent-sdk` TypeScript SDK is first-party. No subprocess,
 no output parsing, no queue bridge. `for await` directly yields events:
 
 ```ts
 // src/plugins/claude/plugin.ts
 
-import { query } from "@anthropic-ai/claude-code";
-import type { CliPlugin, ExecuteInput, PluginContext } from "../types.js";
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import type { CliPlugin, ExecuteInput, PluginContext, ConversationInfo } from "../types.js";
 import type { BotEvent } from "../../stream/events.js";
 import { mapClaudeMessage } from "./event-mapper.js";
 
@@ -424,96 +426,109 @@ export class ClaudePlugin implements CliPlugin {
     input: ExecuteInput,
     ctx: PluginContext,
   ): AsyncGenerator<BotEvent> {
-    const mcpEndpoint = ctx.mcpEndpoints.find(e => e.name === "process-manager");
+    const mcpEndpoint = ctx.mcpEndpoints.find((e) => e.name === "process-manager");
+
+    const mcpServers = mcpEndpoint
+      ? { "process-manager": { type: "http" as const, url: mcpEndpoint.url } }
+      : undefined;
 
     const options = {
       permissionMode: "bypassPermissions" as const,
       maxTurns: this.maxTurns,
       maxBudgetUsd: this.maxBudgetUsd,
       cwd: input.workdir,
-      settingSources: ["user", "project", "local"],
+      settingSources: ["user", "project", "local"] as ("user" | "project" | "local")[],
       resume: input.sessionId,
-      mcpServers: mcpEndpoint
-        ? { "process-manager": { type: "http" as const, url: mcpEndpoint.url } }
-        : {},
+      mcpServers,
     };
 
     // No queue bridge, no task isolation — just iterate.
     // In Python this required ~15 lines of asyncio.Queue boilerplate
     // due to anyio cancel-scope constraints. In TS: zero.
     for await (const msg of query({ prompt: input.message, options })) {
-      yield* mapClaudeMessage(msg, "claude");
+      yield* mapClaudeMessage(msg as Parameters<typeof mapClaudeMessage>[0], "claude");
     }
   }
 
   async listConversations(): Promise<ConversationInfo[]> {
-    // Walk ~/.claude/projects/*//*.jsonl — same logic as Python,
-    // using fs/promises + readline.
+    // Walk ~/.claude/projects/*//*.jsonl
     return [];
   }
 }
 ```
 
-The event mapper is a pure function — no side effects, easy to test:
+The event mapper uses structural interfaces rather than importing SDK types
+directly, so it stays testable without the SDK installed. The SDK yields
+`SDKAssistantMessage` with content at `msg.message.content` (not `msg.content`
+directly), which the `extractContent()` helper navigates:
 
 ```ts
 // src/plugins/claude/event-mapper.ts
 
-import type {
-  AssistantMessage, ResultMessage, SystemMessage,
-  TextBlock, ThinkingBlock, ToolUseBlock, ToolResultBlock,
-} from "@anthropic-ai/claude-code";
 import type { BotEvent, ToolResultContent } from "../../stream/events.js";
 import { cleanToolName } from "../util.js";
+
+// Structural interfaces matching the SDK shape — no SDK import needed.
+interface TextBlock { type: "text"; text: string; }
+interface ThinkingBlock { type: "thinking"; thinking: string; }
+interface ToolUseBlock { type: "tool_use"; id: string; name: string; input: Record<string, unknown>; }
+interface ToolResultBlock {
+  type: "tool_result"; tool_use_id: string; is_error?: boolean;
+  content: string | Array<{ type: string; text?: string }> | null | undefined;
+}
+interface AssistantMessage { type: "assistant"; message: { content: ContentBlock[] }; }
+interface ResultMessage {
+  type: "result"; session_id?: string; total_cost_usd?: number; duration_ms?: number;
+}
+
+type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock;
+type SdkMessage = AssistantMessage | ResultMessage | { type?: string };
 
 let blockSeq = 0;
 const nextId = () => `b${blockSeq++}`;
 
 export function* mapClaudeMessage(
-  msg: AssistantMessage | ResultMessage | SystemMessage,
+  msg: SdkMessage,
   pluginId: "claude",
 ): Generator<BotEvent> {
   const ts = Date.now();
 
-  if ("content" in msg && Array.isArray(msg.content)) {
-    // AssistantMessage
-    for (const block of msg.content) {
-      if (isTextBlock(block)) {
+  const content = extractContent(msg);
+  if (content) {
+    for (const block of content) {
+      if (block.type === "text") {
         const id = nextId();
         yield { type: "block_open", pluginId, ts, block: { id, kind: "text" } };
-        yield { type: "block_delta", pluginId, ts, blockId: id, delta: block.text };
+        yield { type: "block_delta", pluginId, ts, blockId: id, delta: (block as TextBlock).text };
         yield { type: "block_close", pluginId, ts, blockId: id };
       }
 
-      if (isThinkingBlock(block)) {
+      if (block.type === "thinking") {
         const id = nextId();
         yield { type: "block_open", pluginId, ts, block: { id, kind: "thinking" } };
-        yield { type: "block_delta", pluginId, ts, blockId: id, delta: block.thinking };
+        yield { type: "block_delta", pluginId, ts, blockId: id, delta: (block as ThinkingBlock).thinking };
         yield { type: "block_close", pluginId, ts, blockId: id };
       }
 
-      if (isToolUseBlock(block)) {
+      if (block.type === "tool_use") {
+        const tu = block as ToolUseBlock;
         yield {
           type: "block_emit", pluginId, ts,
           block: {
-            id: nextId(),
-            kind: "tool_use",
-            toolName: cleanToolName(block.name),
-            toolId: block.id,
-            input: block.input as Record<string, unknown>,
+            id: nextId(), kind: "tool_use",
+            toolName: cleanToolName(tu.name), toolId: tu.id, input: tu.input,
           },
         };
       }
 
-      if (isToolResultBlock(block)) {
+      if (block.type === "tool_result") {
+        const tr = block as ToolResultBlock;
         yield {
           type: "block_emit", pluginId, ts,
           block: {
-            id: nextId(),
-            kind: "tool_result",
-            toolUseId: block.tool_use_id,
-            isError: block.is_error ?? false,
-            content: normalizeToolResultContent(block.content),
+            id: nextId(), kind: "tool_result",
+            toolUseId: tr.tool_use_id, isError: tr.is_error ?? false,
+            content: normalizeToolResultContent(tr.content),
           },
         };
       }
@@ -543,18 +558,29 @@ function normalizeToolResultContent(
   if (Array.isArray(raw)) {
     const parts = raw
       .filter((p): p is { type: "text"; text: string } => p.type === "text" && typeof p.text === "string")
-      .map(p => ({ type: "text" as const, text: p.text }));
+      .map((p) => ({ type: "text" as const, text: p.text }));
     return parts.length > 0 ? { format: "parts", parts } : { format: "empty" };
   }
   return { format: "empty" };
 }
 
-// Type guards for SDK message types
-function isTextBlock(b: unknown): b is TextBlock { return (b as any)?.type === "text"; }
-function isThinkingBlock(b: unknown): b is ThinkingBlock { return (b as any)?.type === "thinking"; }
-function isToolUseBlock(b: unknown): b is ToolUseBlock { return (b as any)?.type === "tool_use"; }
-function isToolResultBlock(b: unknown): b is ToolResultBlock { return (b as any)?.type === "tool_result"; }
-function isResultMessage(m: unknown): m is ResultMessage { return (m as any)?.type === "result"; }
+/**
+ * Navigate the SDK's message shape:
+ * SDKAssistantMessage has content at msg.message.content (not msg.content).
+ */
+function extractContent(m: SdkMessage): ContentBlock[] | undefined {
+  if (
+    (m as AssistantMessage).type === "assistant" &&
+    Array.isArray((m as AssistantMessage).message?.content)
+  ) {
+    return (m as AssistantMessage).message.content;
+  }
+  return undefined;
+}
+
+function isResultMessage(m: unknown): m is ResultMessage {
+  return (m as ResultMessage)?.type === "result";
+}
 ```
 
 ### Gemini Plugin — spawn + readline
@@ -743,8 +769,16 @@ export class GeminiEventParser {
 
   *finish(exitCode: number | null): Generator<BotEvent> {
     yield* this.closeTextBlock();
-    // If no result event was emitted, synthesize one
-    // (caller checks whether a CompleteEvent was already yielded)
+    // If no result event was emitted, the caller checks whether
+    // a CompleteEvent was already yielded.
+    if (exitCode !== 0 && exitCode !== null) {
+      yield {
+        type: "fatal_error",
+        pluginId: "gemini",
+        ts: Date.now(),
+        error: { message: `Gemini CLI exited with code ${exitCode}` },
+      };
+    }
   }
 }
 ```
@@ -818,7 +852,7 @@ For Gemini, the `prepareGeminiLaunch` helper isolates the filesystem hack:
 // src/plugins/gemini/mcp-config.ts
 
 import { writeFile, readFile, unlink, mkdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { findGitRoot } from "../../util/git.js";
 import type { PluginContext } from "../types.js";
 
@@ -879,7 +913,7 @@ export async function prepareGeminiLaunch(opts: {
 ```ts
 // src/process-manager/types.ts
 
-import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 
 export type ProcessStatus =
   | "starting"
@@ -894,6 +928,7 @@ export interface ManagedProcess {
   args: string[];
   cwd: string;
   env?: Record<string, string>;
+  pipeOutput?: boolean;         // pipe child stdout/stderr to parent console
   status: ProcessStatus;
   pid?: number;
   exitCode?: number | null;
@@ -902,7 +937,7 @@ export interface ManagedProcess {
   stdout: RingBuffer;
   stderr: RingBuffer;
   /** @internal */
-  child?: ChildProcessWithoutNullStreams;
+  child?: ChildProcess;
 }
 ```
 
@@ -967,6 +1002,7 @@ export class ProcessSupervisor {
     args?: string[];
     cwd: string;
     env?: Record<string, string>;
+    pipeOutput?: boolean;       // pipe child stdout/stderr to parent console
   }): Promise<ManagedProcess> {
     const existing = this.processes.get(input.name);
     if (existing && (existing.status === "running" || existing.status === "starting")) {
@@ -979,6 +1015,7 @@ export class ProcessSupervisor {
       args: input.args ?? [],
       cwd: input.cwd,
       env: input.env,
+      pipeOutput: input.pipeOutput ?? existing?.pipeOutput,
       status: "starting",
       startedAt: Date.now(),
       stdout: new RingBuffer(),
@@ -999,8 +1036,16 @@ export class ProcessSupervisor {
     managed.pid = child.pid;
     managed.status = "running";
 
-    child.stdout.on("data", (buf: Buffer) => managed.stdout.append(buf.toString()));
-    child.stderr.on("data", (buf: Buffer) => managed.stderr.append(buf.toString()));
+    child.stdout.on("data", (buf: Buffer) => {
+      const str = buf.toString();
+      managed.stdout.append(str);
+      if (managed.pipeOutput) process.stdout.write(buf);
+    });
+    child.stderr.on("data", (buf: Buffer) => {
+      const str = buf.toString();
+      managed.stderr.append(str);
+      if (managed.pipeOutput) process.stderr.write(buf);
+    });
     child.on("exit", (code) => {
       managed.exitCode = code;
       managed.stoppedAt = Date.now();
@@ -1106,7 +1151,7 @@ export function createProcessManagerMcp(supervisor: ProcessSupervisor) {
       command: z.string().describe("Executable to run"),
       args: z.array(z.string()).optional().describe("Command arguments"),
       cwd: z.string().describe("Working directory"),
-      env: z.record(z.string()).optional().describe("Extra env vars"),
+      env: z.record(z.string(), z.string()).optional().describe("Extra env vars"),
     },
     async (input) => ({
       content: [{ type: "text", text: JSON.stringify(await supervisor.start(input)) }],
@@ -1115,14 +1160,39 @@ export function createProcessManagerMcp(supervisor: ProcessSupervisor) {
 
   server.tool(
     "stop_process",
-    "Stop a managed process. SIGTERM → wait → SIGKILL.",
+    "Stop a managed process. SIGTERM -> wait -> SIGKILL.",
     {
       name: z.string(),
       force: z.boolean().optional(),
     },
     async ({ name, force }) => ({
-      content: [{ type: "text", text: JSON.stringify(await supervisor.stop(name, force)) }],
+      content: [{ type: "text" as const, text: JSON.stringify(await supervisor.stop(name, force)) }],
     }),
+  );
+
+  server.tool(
+    "restart_process",
+    "Restart a managed process (stop then start with same config).",
+    {
+      name: z.string(),
+      force: z.boolean().optional(),
+    },
+    async ({ name, force }) => {
+      const existing = supervisor.list().find((p) => p.name === name);
+      if (!existing) throw new Error(`No process named '${name}'`);
+      await supervisor.stop(name, force);
+      const restarted = await supervisor.start({
+        name: existing.name,
+        command: existing.command,
+        args: existing.args,
+        cwd: existing.cwd,
+        env: existing.env,
+        pipeOutput: existing.pipeOutput,
+      });
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(restarted) }],
+      };
+    },
   );
 
   server.tool(
@@ -1190,7 +1260,10 @@ export interface ChatPlatform {
   send(channelId: string, msg: OutboundMessage): Promise<MessageRef>;
   edit(ref: MessageRef, msg: OutboundMessage): Promise<void>;
   delete?(ref: MessageRef): Promise<void>;
+  /** Fire a "typing..." indicator. Platforms auto-expire it (e.g. Discord ~10s). */
   sendTyping?(channelId: string): Promise<void>;
+  /** Force-clear the typing indicator (e.g. Discord: send+delete a zero-width space). */
+  stopTyping?(channelId: string): Promise<void>;
 }
 ```
 
@@ -1375,9 +1448,10 @@ contains no text formatting — all formatting is delegated to the renderer:
 ```ts
 // src/stream/stream-coordinator.ts
 
-import type { BotEvent, BlockEmitEvent, CompleteEvent, FatalErrorEvent } from "./events.js";
+import type { BotEvent, CompleteEvent, FatalErrorEvent } from "./events.js";
 import type { ChatPlatform, MessageRef } from "../platform/types.js";
 import type { Renderer } from "../rendering/types.js";
+import { logBotEvent } from "../core/logger.js";
 
 interface OpenBlock {
   kind: "text" | "thinking";
@@ -1427,6 +1501,10 @@ export class StreamCoordinator {
       const text = buffer.slice(0, charLimit);
       if (!msg || !supportsEdit) {
         msg = await this.platform.send(channelId, { text, parseMode: "markdown" });
+        // Discord auto-clears typing on message send; re-fire immediately
+        if (this.platform.sendTyping && typingTimer !== undefined) {
+          void this.platform.sendTyping(channelId).catch(() => {});
+        }
       } else {
         await this.platform.edit(msg, { text, parseMode: "markdown" });
       }
@@ -1438,12 +1516,11 @@ export class StreamCoordinator {
         const overflow = buffer.slice(charLimit);
         buffer = buffer.slice(0, charLimit);
 
-        // Repair unclosed code fences before splitting
         const fence = unclosedCodeFence(buffer);
         if (fence) buffer += "\n```";
 
         await flush(true);
-        msg = undefined; // next flush creates a new message
+        msg = undefined;
         buffer = fence ? `${fence}\n${overflow}` : overflow;
       }
     };
@@ -1457,7 +1534,32 @@ export class StreamCoordinator {
       buffer = "";
     };
 
+    // -- Typing indicator --
+    // Show "typing..." continuously from start until completion.
+    // Discord's indicator expires after ~10s, so refresh every 8s.
+    // Discord auto-clears typing on message send, so flush() re-fires.
+    let typingTimer: ReturnType<typeof setInterval> | undefined;
+    const startTyping = () => {
+      if (!this.platform.sendTyping || typingTimer !== undefined) return;
+      const fire = () => void this.platform.sendTyping!(channelId).catch(() => {});
+      fire();
+      typingTimer = setInterval(fire, 8_000);
+    };
+    const stopTyping = async () => {
+      if (typingTimer !== undefined) {
+        clearInterval(typingTimer);
+        typingTimer = undefined;
+        await this.platform.stopTyping?.(channelId).catch(() => {});
+      }
+    };
+    startTyping();
+
+    const lens = {
+      contentLength: (id: string) => openBlocks.get(id)?.content.length ?? 0,
+    };
+
     for await (const ev of events) {
+      logBotEvent(ev, lens);
       switch (ev.type) {
         case "block_open":
           openBlocks.set(ev.block.id, {
@@ -1487,13 +1589,19 @@ export class StreamCoordinator {
             // Each tool call gets its own message
             await finalize();
             buffer = this.renderer.renderToolHeader(ev.block.toolName, ev.block.input);
-            await flush();
+            await finalize();
           } else if (ev.block.kind === "tool_result") {
-            const text = ev.block.content.format === "text" ? ev.block.content.text
-              : ev.block.content.format === "parts" ? ev.block.content.parts.map(p => p.text).join("\n")
-              : "";
-            buffer += "\n" + this.renderer.renderToolResult(text, ev.block.isError);
-            await finalize(); // tool card done — next content gets fresh message
+            const text =
+              ev.block.content.format === "text"
+                ? ev.block.content.text
+                : ev.block.content.format === "parts"
+                  ? ev.block.content.parts.map((p) => p.text).join("\n")
+                  : "";
+            const rendered = this.renderer.renderToolResult(text, ev.block.isError);
+            if (rendered) {
+              buffer += rendered;
+              await finalize();
+            }
           } else {
             buffer += this.renderer.renderEmit(ev);
             await split();
@@ -1503,7 +1611,7 @@ export class StreamCoordinator {
 
         case "complete":
           result = ev;
-          break; // fall through to final flush
+          break;
 
         case "fatal_error":
           buffer += this.renderer.renderFatalError(ev.error.message);
@@ -1519,6 +1627,7 @@ export class StreamCoordinator {
       if (footer) buffer += `${buffer ? "\n" : ""}${footer}`;
     }
 
+    await stopTyping();
     await finalize();
     return result;
   }
@@ -1547,7 +1656,7 @@ export class StreamCoordinator {
 | Plugin interface | TypeScript interface, not abstract class | No inheritance hierarchy needed; plugins are leaf implementations |
 | Process group kill | `process.kill(-pid)` on Unix, `tree-kill` on Windows | Same reliability as Python on the primary target (macOS/Linux) |
 | MCP SDK | `@modelcontextprotocol/sdk` with Zod schemas | Official SDK, type-safe tool definitions |
-| Claude integration | `@anthropic-ai/claude-code` SDK direct | No subprocess, no output parsing, proper streaming types |
+| Claude integration | `@anthropic-ai/claude-agent-sdk` direct | No subprocess, no output parsing, proper streaming types |
 | Gemini integration | `child_process.spawn` + `readline` | Gemini CLI has no TS SDK; NDJSON streaming is natural with readline |
 | Platform abstraction | `ChatPlatform` interface with `PlatformConstraints` | One coordinator works across Discord, Telegram, WhatsApp |
 | Renderer vs Platform | Separate interfaces | Renderer = "how does a tool header look?"; Platform = "send this string to the user" |

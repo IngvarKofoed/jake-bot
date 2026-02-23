@@ -8,7 +8,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full design document with code 
 
 - **Runtime:** Node.js with TypeScript (ES2022, Node16 modules, ESM)
 - **Discord:** discord.js v14
-- **AI CLIs:** @anthropic-ai/claude-code SDK (direct), Gemini CLI (spawn + NDJSON), Codex SDK (hypothetical)
+- **AI CLIs:** @anthropic-ai/claude-agent-sdk (direct), Gemini CLI (spawn + NDJSON), Codex SDK (hypothetical)
 - **MCP:** @modelcontextprotocol/sdk for process manager
 - **Validation:** zod
 
@@ -57,12 +57,13 @@ src/
     router.ts              # message → plugin → StreamCoordinator pipeline
     active-conversations.ts # (userId, channelId) → {pluginId, workdir, sessionId}
     plugin-registry.ts     # plugin lookup by ID
+    logger.ts              # timestamped Logger interface + logBotEvent
 
   process-manager/
     types.ts               # ManagedProcess, ProcessStatus, RingBuffer
     supervisor.ts          # spawn, drain, kill process trees (process groups on Unix)
     mcp-server.ts          # MCP tool definitions (start/stop/restart/list/get_output)
-    main.ts                # standalone SSE-based HTTP daemon on :8901
+    main.ts                # standalone Streamable HTTP daemon on :8901 (auto-starts jake-bot)
 
   util/
     git.ts                 # findGitRoot() — used by Gemini MCP config injection
@@ -80,7 +81,7 @@ Plugins implement `CliPlugin` — an async generator interface that yields `BotE
 `ChatPlatform` (transport: send/edit) and `Renderer` (formatting) are separate interfaces. `StreamCoordinator` uses `PlatformConstraints` (charLimit, supportsEdit, editRateLimitMs) to adapt behavior per platform — no platform-specific imports or text formatting in the coordinator. All formatting (tool headers, errors, footers) is delegated to the `Renderer`.
 
 ### Process Manager
-Long-running processes managed via MCP protocol. `ProcessSupervisor` handles spawn + drain + kill (process groups on Unix, tree-kill on Windows). Exposed as an SSE-based MCP HTTP server that all CLI plugins connect to.
+Long-running processes managed via MCP protocol. `ProcessSupervisor` handles spawn + drain + kill (process groups on Unix, tree-kill on Windows). Exposed as a stateless Streamable HTTP MCP server (`POST /mcp`) that all CLI plugins connect to.
 
 ## Data Flow
 
@@ -114,9 +115,9 @@ See `.env.example`. Required: `DISCORD_TOKEN`, `DISCORD_APP_ID`.
 |----------|---------|-------------|
 | `DISCORD_TOKEN` | — | Discord bot token (required) |
 | `DISCORD_APP_ID` | — | Discord application ID (required) |
-| `DEFAULT_WORKDIR` | `process.cwd()` | Default working directory for plugins |
+| `DEFAULT_WORKDIR` | `homedir()` | Default working directory for plugins |
 | `PROCESS_MANAGER_PORT` | `8901` | Process manager HTTP port |
-| `PROCESS_MANAGER_URL` | `http://localhost:8901/sse` | Process manager endpoint URL |
+| `PROCESS_MANAGER_URL` | `http://localhost:8901/mcp` | Process manager endpoint URL |
 | `CLAUDE_MAX_TURNS` | `30` | Max agentic turns per Claude invocation |
 | `CLAUDE_MAX_BUDGET` | `5.0` | Max USD budget per Claude invocation |
 | `GEMINI_BIN` | `gemini` | Path to Gemini CLI binary |

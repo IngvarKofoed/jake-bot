@@ -185,6 +185,15 @@ export class DiscordAdapter implements BotAdapter {
     interaction: ChatInputCommandInteraction,
     pluginId: string,
   ): Promise<void> {
+    const plugin = this.plugins.get(pluginId);
+    if (!plugin) {
+      await interaction.reply({
+        content: `The **${pluginId}** plugin is not currently available.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
     const workdir = interaction.options.getString("workdir") ?? this.config.defaultWorkdir;
     const userId = interaction.user.id;
     const channelId = interaction.channelId;
@@ -196,7 +205,6 @@ export class DiscordAdapter implements BotAdapter {
       return;
     }
 
-    const plugin = this.plugins.require(pluginId);
     await interaction.reply(`Started ${plugin.displayName} conversation. Send a message to begin.`);
   }
 

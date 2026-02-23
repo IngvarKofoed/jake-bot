@@ -106,6 +106,14 @@
 - `StreamCoordinator` no longer contains any formatting — delegates fatal errors and completion footer to the renderer
 - Discord footer renders duration as subtext + italic (`-# *5.2s*`)
 
+## 20. Sync architecture docs with code (3-model audit)
+
+- Fixed `/codex` slash command crash — adapter now checks plugin is registered before starting conversation
+- Updated all `@anthropic-ai/claude-code` references → `@anthropic-ai/claude-agent-sdk` in both docs; rewrote event-mapper code example to show structural interfaces and `extractContent()` helper
+- Fixed process manager transport docs: SSE → Streamable HTTP, `/sse` → `/mcp`, added `restart_process` tool
+- Documented `stopTyping` on `ChatPlatform` and the typing-indicator lifecycle in `StreamCoordinator`
+- Updated `PluginContext.logger` type, `DEFAULT_WORKDIR` default, `pipeOutput` field, `logger.ts` in project structure, and Gemini `finish()` fatal_error logic
+
 ## 19. Fix typing indicator gaps and post-completion persistence
 
 - Typing now runs continuously from start to completion — no longer stopped/restarted at content boundaries
