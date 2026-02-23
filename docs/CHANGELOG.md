@@ -127,3 +127,7 @@
 - Removed `startTyping()` from `finalize()` so typing isn't re-fired after the final message
 - Re-fire `sendTyping()` immediately after each `send()` since Discord auto-clears typing on message send
 - Added `stopTyping` to `ChatPlatform` interface; Discord implementation sends+deletes a zero-width space message to force-clear the indicator
+
+## 22. Stop truncating thinking message in Discord
+
+- Removed 80-character truncation from thinking preview in `DiscordRenderer.renderStreaming()` — full thinking text is now shown

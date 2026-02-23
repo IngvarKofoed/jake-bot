@@ -6,8 +6,8 @@ const BARE_URL_RE = /(?<![<(])(https?:\/\/\S+)/g;
 export class DiscordRenderer implements Renderer {
   renderStreaming(kind: "text" | "thinking", content: string): string {
     if (kind === "thinking") {
-      const preview = content.slice(0, 80).replace(/\n/g, " ");
-      return `\n-# \u{1F4AD} ${preview}${content.length > 80 ? "\u2026" : ""}\n`;
+      const flat = content.replace(/\n/g, " ");
+      return `\n-# \u{1F4AD} ${flat}\n`;
     }
     return this.suppressEmbeds(content);
   }
