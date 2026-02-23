@@ -85,6 +85,10 @@ export class DiscordAdapter implements BotAdapter {
         .setDescription("End the current conversation"),
 
       new SlashCommandBuilder()
+        .setName("clear")
+        .setDescription("Clear conversation history and start fresh (same plugin & workdir)"),
+
+      new SlashCommandBuilder()
         .setName("status")
         .setDescription("Show current conversation status"),
 
@@ -136,6 +140,9 @@ export class DiscordAdapter implements BotAdapter {
             break;
           case "end":
             await this.handleEnd(interaction);
+            break;
+          case "clear":
+            await this.handleClear(interaction);
             break;
           case "status":
             await this.handleStatus(interaction);
@@ -213,6 +220,16 @@ export class DiscordAdapter implements BotAdapter {
     await interaction.reply(
       ended ? "Conversation ended." : "No active conversation.",
     );
+  }
+
+  private async handleClear(interaction: ChatInputCommandInteraction): Promise<void> {
+    const convo = this.conversations.clear(interaction.user.id, interaction.channelId);
+    if (!convo) {
+      await interaction.reply({ content: "No active conversation.", ephemeral: true });
+      return;
+    }
+    const plugin = this.plugins.get(convo.pluginId);
+    await interaction.reply(`Cleared. Fresh ${plugin?.displayName ?? convo.pluginId} conversation ready.`);
   }
 
   private async handleStatus(interaction: ChatInputCommandInteraction): Promise<void> {

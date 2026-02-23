@@ -38,7 +38,7 @@ export class ActiveConversations {
     const existing = this.convos.get(key);
     if (existing) {
       throw new Error(
-        `Already in a ${existing.pluginId} conversation. Use /end first.`,
+        `Already in a ${existing.pluginId} conversation. Use /end or /clear first.`,
       );
     }
     const resolved = resolveWorkdir(workdir);
@@ -73,6 +73,19 @@ export class ActiveConversations {
       log.info("convo", `end user=${userId} channel=${channelId}`);
     }
     return deleted;
+  }
+
+  /** End the current conversation and immediately start a fresh one with the same plugin/workdir. */
+  clear(userId: string, channelId: string): Conversation | undefined {
+    const key = makeKey(userId, channelId);
+    const existing = this.convos.get(key);
+    if (!existing) return undefined;
+    const { pluginId, workdir } = existing;
+    this.convos.delete(key);
+    const convo: Conversation = { pluginId, workdir, startedAt: Date.now() };
+    this.convos.set(key, convo);
+    log.info("convo", `clear user=${userId} channel=${channelId} plugin=${pluginId}`);
+    return convo;
   }
 
   listAll(): Array<{ userId: string; channelId: string; conversation: Conversation }> {

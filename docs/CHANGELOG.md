@@ -114,6 +114,12 @@
 - Documented `stopTyping` on `ChatPlatform` and the typing-indicator lifecycle in `StreamCoordinator`
 - Updated `PluginContext.logger` type, `DEFAULT_WORKDIR` default, `pipeOutput` field, `logger.ts` in project structure, and Gemini `finish()` fatal_error logic
 
+## 21. Add /clear slash command
+
+- New `/clear` command resets conversation history without switching plugin or workdir — replaces the `/end` + `/claude` two-step
+- Added `ActiveConversations.clear()` method that deletes the old session and starts a fresh one in place
+- Updated "already in conversation" error to mention `/clear` alongside `/end`
+
 ## 19. Fix typing indicator gaps and post-completion persistence
 
 - Typing now runs continuously from start to completion — no longer stopped/restarted at content boundaries
