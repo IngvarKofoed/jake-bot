@@ -155,6 +155,14 @@
 - Graceful handling of corrupt, missing, or stale session files — logs a warning and starts fresh
 - No adapter changes needed: persisted sessions are loaded into the Map at construction time, so `get()` finds them transparently
 
+## 27. Add input_request and mode_change event abstractions
+
+- New `InputRequestEvent` (`type: "input_request"`) for when the LLM asks the user a question — platform-agnostic, each plugin maps its SDK-specific tools to it
+- New `ModeChangeEvent` (`type: "mode_change"`, mode `"plan"` | `"execute"`) for plan mode transitions
+- Claude event mapper intercepts `AskUserQuestion` → `input_request`, `EnterPlanMode` → `mode_change(plan)`, `ExitPlanMode` → `mode_change(execute)` instead of emitting them as generic tool_use events
+- All five renderers (Discord, Web, Telegram, WhatsApp) implement `renderInputRequest` and `renderModeChange`; web frontend renders questions with accent-colored left border and mode changes as italic annotations
+- StreamCoordinator and logger handle the two new event types
+
 ## 26. Web adapter: survive page refresh (session + message history)
 
 - Session ID now stored in `localStorage` instead of `sessionStorage`, so it persists across refresh and tab close

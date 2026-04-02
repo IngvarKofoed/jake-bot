@@ -74,6 +74,12 @@ export function logBotEvent(ev: BotEvent, lens: OpenBlockLens): void {
         log.info(STREAM, `[${p}] emit ${ev.block.kind}: ${truncate(ev.block.message, 100)}`);
       }
       break;
+    case "input_request":
+      log.info(STREAM, `[${p}] input_request kind=${ev.request.kind}: ${truncate(ev.request.text, 100)}`);
+      break;
+    case "mode_change":
+      log.info(STREAM, `[${p}] mode_change → ${ev.mode}`);
+      break;
     case "complete":
       log.info(
         STREAM,

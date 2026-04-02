@@ -1,5 +1,5 @@
 import type { Renderer } from "./types.js";
-import type { BlockEmitEvent } from "../stream/events.js";
+import type { BlockEmitEvent, InputRequestKind, ExecutionMode } from "../stream/events.js";
 
 const BARE_URL_RE = /(?<![<(])(https?:\/\/\S+)/g;
 
@@ -53,6 +53,16 @@ export class DiscordRenderer implements Renderer {
       truncated = truncated.slice(0, 400) + "\n\u2026 (truncated)";
     }
     return `${prefix}\`\`\`\n${truncated}\n\`\`\``;
+  }
+
+  renderInputRequest(_kind: InputRequestKind, text: string): string {
+    return `\u2753 ${text}`;
+  }
+
+  renderModeChange(mode: ExecutionMode): string {
+    return mode === "plan"
+      ? `\n-# \u{1F4CB} Entering plan mode\n`
+      : `\n-# \u{1F680} Starting implementation\n`;
   }
 
   renderFatalError(message: string): string {

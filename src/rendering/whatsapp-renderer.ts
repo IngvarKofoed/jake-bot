@@ -1,5 +1,5 @@
 import type { Renderer } from "./types.js";
-import type { BlockEmitEvent } from "../stream/events.js";
+import type { BlockEmitEvent, InputRequestKind, ExecutionMode } from "../stream/events.js";
 
 /**
  * WhatsApp renderer stub -- uses plain text with minimal formatting.
@@ -40,6 +40,16 @@ export class WhatsAppRenderer implements Renderer {
       .join(", ");
     if (preview.length > 80) preview = preview.slice(0, 80) + "\u2026";
     return `*${toolName}*(${preview})`;
+  }
+
+  renderInputRequest(_kind: InputRequestKind, text: string): string {
+    return `\u2753 ${text}`;
+  }
+
+  renderModeChange(mode: ExecutionMode): string {
+    return mode === "plan"
+      ? `_Entering plan mode_\n`
+      : `_Starting implementation_\n`;
   }
 
   renderFatalError(message: string): string {

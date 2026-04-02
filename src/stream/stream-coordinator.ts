@@ -157,6 +157,18 @@ export class StreamCoordinator {
           }
           break;
 
+        case "input_request":
+          await finalize();
+          buffer = this.renderer.renderInputRequest(ev.request.kind, ev.request.text);
+          await finalize();
+          break;
+
+        case "mode_change":
+          buffer += this.renderer.renderModeChange(ev.mode);
+          await split();
+          await flush();
+          break;
+
         case "complete":
           result = ev;
           break;

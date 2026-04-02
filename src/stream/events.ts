@@ -105,6 +105,28 @@ export type BlockEmitEvent =
   | ErrorEmitEvent
   | SystemEmitEvent;
 
+// -- INPUT_REQUEST: the LLM is asking the user a question --
+
+export type InputRequestKind = "question";
+
+export interface InputRequestEvent extends BaseEvent {
+  type: "input_request";
+  request: {
+    id: string;
+    kind: InputRequestKind;
+    text: string;
+  };
+}
+
+// -- MODE_CHANGE: the LLM changed its execution mode --
+
+export type ExecutionMode = "plan" | "execute";
+
+export interface ModeChangeEvent extends BaseEvent {
+  type: "mode_change";
+  mode: ExecutionMode;
+}
+
 // -- Conversation lifecycle events --
 
 export interface CompleteEvent extends BaseEvent {
@@ -126,6 +148,8 @@ export type BotEvent =
   | BlockDeltaEvent
   | BlockCloseEvent
   | BlockEmitEvent
+  | InputRequestEvent
+  | ModeChangeEvent
   | CompleteEvent
   | FatalErrorEvent;
 

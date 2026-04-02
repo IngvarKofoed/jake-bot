@@ -1,5 +1,5 @@
 import type { Renderer } from "./types.js";
-import type { BlockEmitEvent } from "../stream/events.js";
+import type { BlockEmitEvent, InputRequestKind, ExecutionMode } from "../stream/events.js";
 
 /**
  * Telegram renderer stub -- will use HTML parse mode.
@@ -40,6 +40,16 @@ export class TelegramRenderer implements Renderer {
       .join(", ");
     if (preview.length > 80) preview = preview.slice(0, 80) + "\u2026";
     return `<b>${toolName}</b>(${preview})`;
+  }
+
+  renderInputRequest(_kind: InputRequestKind, text: string): string {
+    return `\u2753 ${text}`;
+  }
+
+  renderModeChange(mode: ExecutionMode): string {
+    return mode === "plan"
+      ? `<i>Entering plan mode</i>\n`
+      : `<i>Starting implementation</i>\n`;
   }
 
   renderFatalError(message: string): string {

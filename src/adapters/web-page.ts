@@ -98,6 +98,13 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     color: #777; font-style: italic; font-size: 12px;
     border-left: 2px solid #333; padding-left: 8px; margin: 4px 0;
   }
+  .msg.bot .question {
+    color: #c79753; font-weight: 600;
+    padding: 6px 10px; border-left: 3px solid #c79753; margin: 6px 0;
+  }
+  .msg.bot .mode-change {
+    color: #777; font-size: 12px; font-style: italic; margin: 4px 0;
+  }
   .msg.bot .tool {
     color: #888; font-size: 11px; background: #111;
     border-radius: 3px; padding: 3px 7px; margin: 2px 0;
@@ -410,6 +417,20 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       if (line.startsWith("[thinking]")) {
         prevKind = "other";
         out.push('<div class="thinking">' + inlineMd(line.slice(10).trim()) + '</div>');
+        i++; continue;
+      }
+
+      // Question (input request from LLM)
+      if (line.startsWith("[question]")) {
+        prevKind = "other";
+        out.push('<div class="question">' + inlineMd(line.slice(10).trim()) + '</div>');
+        i++; continue;
+      }
+
+      // Mode change (plan / execute)
+      if (line.startsWith("[mode]")) {
+        prevKind = "other";
+        out.push('<div class="mode-change">' + esc(line.slice(6).trim()) + '</div>');
         i++; continue;
       }
 

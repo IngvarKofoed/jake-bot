@@ -1,4 +1,4 @@
-import type { BlockEmitEvent } from "../stream/events.js";
+import type { BlockEmitEvent, InputRequestKind, ExecutionMode } from "../stream/events.js";
 
 export interface Renderer {
   /** Render accumulated content for a streaming text/thinking block. */
@@ -12,6 +12,12 @@ export interface Renderer {
 
   /** Render a truncated tool result. */
   renderToolResult(content: string, isError: boolean): string;
+
+  /** Render an input request (the LLM is asking the user a question). */
+  renderInputRequest(kind: InputRequestKind, text: string): string;
+
+  /** Render a mode change (e.g. plan mode ↔ execute mode). */
+  renderModeChange(mode: ExecutionMode): string;
 
   /** Render a fatal error message. */
   renderFatalError(message: string): string;

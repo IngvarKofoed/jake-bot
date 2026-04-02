@@ -1,5 +1,5 @@
 import type { Renderer } from "./types.js";
-import type { BlockEmitEvent } from "../stream/events.js";
+import type { BlockEmitEvent, InputRequestKind, ExecutionMode } from "../stream/events.js";
 
 /**
  * Plain-text renderer for the web voice adapter.
@@ -55,6 +55,16 @@ export class WebRenderer implements Renderer {
       truncated = truncated.slice(0, 400) + "\n... (truncated)";
     }
     return `${prefix}${truncated}`;
+  }
+
+  renderInputRequest(_kind: InputRequestKind, text: string): string {
+    return `[question] ${text}`;
+  }
+
+  renderModeChange(mode: ExecutionMode): string {
+    return mode === "plan"
+      ? `[mode] Entering plan mode`
+      : `[mode] Starting implementation`;
   }
 
   renderFatalError(message: string): string {

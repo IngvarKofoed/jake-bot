@@ -1,4 +1,4 @@
-import type { BotEvent, ToolResultContent } from "../../stream/events.js";
+import type { BotEvent, ToolResultContent, InputRequestEvent, ModeChangeEvent } from "../../stream/events.js";
 import { cleanToolName } from "../util.js";
 
 // Type guards for Claude SDK message types.
@@ -73,18 +73,23 @@ export function* mapClaudeMessage(
 
       if (block.type === "tool_use") {
         const tu = block as ToolUseBlock;
-        yield {
-          type: "block_emit",
-          pluginId,
-          ts,
-          block: {
-            id: nextId(),
-            kind: "tool_use",
-            toolName: cleanToolName(tu.name),
-            toolId: tu.id,
-            input: tu.input,
-          },
-        };
+        const mapped = mapSpecialTool(tu, pluginId, ts);
+        if (mapped) {
+          yield mapped;
+        } else {
+          yield {
+            type: "block_emit",
+            pluginId,
+            ts,
+            block: {
+              id: nextId(),
+              kind: "tool_use",
+              toolName: cleanToolName(tu.name),
+              toolId: tu.id,
+              input: tu.input,
+            },
+          };
+        }
       }
 
       if (block.type === "tool_result") {
@@ -115,6 +120,36 @@ export function* mapClaudeMessage(
       durationMs: msg.duration_ms,
     };
   }
+}
+
+/**
+ * Map Claude-specific interactive tools to platform-agnostic events.
+ * Returns undefined for regular tools that should emit as tool_use.
+ */
+function mapSpecialTool(
+  tu: ToolUseBlock,
+  pluginId: "claude",
+  ts: number,
+): InputRequestEvent | ModeChangeEvent | undefined {
+  if (tu.name === "AskUserQuestion") {
+    const text =
+      typeof tu.input.question === "string"
+        ? tu.input.question
+        : JSON.stringify(tu.input);
+    return {
+      type: "input_request",
+      pluginId,
+      ts,
+      request: { id: nextId(), kind: "question", text },
+    };
+  }
+  if (tu.name === "EnterPlanMode") {
+    return { type: "mode_change", pluginId, ts, mode: "plan" };
+  }
+  if (tu.name === "ExitPlanMode") {
+    return { type: "mode_change", pluginId, ts, mode: "execute" };
+  }
+  return undefined;
 }
 
 function normalizeToolResultContent(
