@@ -66,7 +66,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   }
   .msg.bot {
     align-self: flex-start; background: #1a1a1a; color: #d4d4d4;
-    border: 1px solid #2a2a2a;
+    border: 1px solid #2a2a2a; min-width: 60%;
   }
   .msg.system {
     align-self: center; background: transparent; color: #666;
@@ -100,9 +100,11 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   }
   .msg.bot .tool {
     color: #888; font-size: 11px; background: #111;
-    border-radius: 3px; padding: 3px 7px; margin: 4px 0;
+    border-radius: 3px; padding: 3px 7px; margin: 2px 0;
     display: inline-block;
   }
+  .msg.bot .tool-first { margin-top: 10px; }
+  .msg.bot .tool-last { margin-bottom: 10px; }
   .msg.bot .footer {
     color: #555; font-size: 11px; margin-top: 6px;
     border-top: 1px solid #222; padding-top: 4px;
@@ -213,7 +215,6 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   const HISTORY_KEY = "jakebot_history_" + session;
   const MAX_HISTORY = 200;
   let history = [];
-  const latestText = new Map(); // messageId -> latest streaming text
 
   function loadHistory() {
     try {
@@ -232,7 +233,9 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
 
   function clearHistory() {
     history = [];
-    latestText.clear();
+    responseParts = new Map();
+    responseOrder = [];
+    currentResponseEl = null;
     try { localStorage.removeItem(HISTORY_KEY); } catch {}
   }
 
@@ -253,7 +256,11 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   let busy = false;
   let speaking = false;
   let ttsEnabled = localStorage.getItem("jakebot_tts") !== "off";
-  const messages = new Map(); // messageId -> DOM element
+
+  // Response accumulator — all events for a single response render in one bubble
+  let currentResponseEl = null;
+  let responseParts = new Map();  // messageId -> latest text for that part
+  let responseOrder = [];         // ordered messageIds
 
   // Sync TTS toggle class with persisted state
   ttsToggle.classList.toggle("active", ttsEnabled);
@@ -272,7 +279,6 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
         el.className = "msg bot";
         el.innerHTML = renderBotHtml(entry.text);
         transcript.appendChild(el);
-        if (entry.messageId) messages.set(entry.messageId, el);
       } else if (entry.role === "system") {
         const el = document.createElement("div");
         el.className = "msg system";
@@ -293,6 +299,10 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       connLabel.textContent = "connected";
       // Reset busy state — if server restarted, in-flight work is lost
       setBusy(false);
+      // Discard any partial response accumulator from a dead connection
+      responseParts = new Map();
+      responseOrder = [];
+      currentResponseEl = null;
     };
 
     sse.onerror = () => {
@@ -359,12 +369,24 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     const lines = text.split("\\n");
     const out = [];
     let i = 0;
+    let prevKind = "other"; // track "tool" vs "other" for spacing
 
     while (i < lines.length) {
       const line = lines[i];
 
+      // Transition out of tool group — mark last tool with tool-last
+      if (prevKind === "tool" && !line.startsWith("Tool:")) {
+        for (let j = out.length - 1; j >= 0; j--) {
+          if (out[j].startsWith('<div class="tool')) {
+            out[j] = out[j].replace('class="tool', 'class="tool tool-last');
+            break;
+          }
+        }
+      }
+
       // Fenced code block
       if (line.startsWith("\`\`\`")) {
+        prevKind = "other";
         const lang = line.slice(3).trim();
         const codeLines = [];
         i++;
@@ -379,18 +401,22 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
 
       // Thinking
       if (line.startsWith("[thinking]")) {
+        prevKind = "other";
         out.push('<div class="thinking">' + inlineMd(line.slice(10).trim()) + '</div>');
         i++; continue;
       }
 
       // Tool
       if (line.startsWith("Tool:")) {
-        out.push('<div class="tool">' + esc(line) + '</div>');
+        const cls = prevKind !== "tool" ? "tool tool-first" : "tool";
+        prevKind = "tool";
+        out.push('<div class="' + cls + '">' + esc(line) + '</div>');
         i++; continue;
       }
 
       // Duration footer
       if (/^Duration:\\s/.test(line)) {
+        prevKind = "other";
         out.push('<div class="footer">' + esc(line) + '</div>');
         i++; continue;
       }
@@ -398,6 +424,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       // Headers
       const hMatch = line.match(/^(#{1,3})\\s+(.+)/);
       if (hMatch) {
+        prevKind = "other";
         const level = hMatch[1].length;
         out.push('<h' + level + '>' + inlineMd(hMatch[2]) + '</h' + level + '>');
         i++; continue;
@@ -405,6 +432,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
 
       // Unordered list items (collect consecutive)
       if (/^[-*]\\s+/.test(line)) {
+        prevKind = "other";
         const items = [];
         while (i < lines.length && /^[-*]\\s+/.test(lines[i])) {
           items.push('<li>' + inlineMd(lines[i].replace(/^[-*]\\s+/, '')) + '</li>');
@@ -416,6 +444,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
 
       // Ordered list items (collect consecutive)
       if (/^\\d+\\.\\s+/.test(line)) {
+        prevKind = "other";
         const items = [];
         while (i < lines.length && /^\\d+\\.\\s+/.test(lines[i])) {
           items.push('<li>' + inlineMd(lines[i].replace(/^\\d+\\.\\s+/, '')) + '</li>');
@@ -426,6 +455,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       }
 
       // Regular line
+      prevKind = "other";
       out.push(inlineMd(line));
       i++;
     }
@@ -433,25 +463,29 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     return out.join("\\n");
   }
 
+  function renderCurrentResponse() {
+    if (!currentResponseEl) return;
+    const combined = responseOrder.map(id => responseParts.get(id)).join("\\n").trim();
+    currentResponseEl.innerHTML = renderBotHtml(combined);
+    scrollDown();
+  }
+
   function handlePlatformEvent(ev) {
     if (ev.type === "message") {
-      const el = document.createElement("div");
-      el.className = "msg bot";
-      el.innerHTML = renderBotHtml(ev.text);
-      transcript.appendChild(el);
-      messages.set(ev.messageId, el);
-      scrollDown();
-      // Track in history (text will be finalized on "done")
-      history.push({ role: "bot", text: ev.text, messageId: ev.messageId, ts: Date.now() });
-      latestText.set(ev.messageId, ev.text);
-    } else if (ev.type === "update") {
-      const el = messages.get(ev.messageId);
-      if (el) {
-        el.innerHTML = renderBotHtml(ev.text);
-        scrollDown();
+      // If no active response bubble (e.g. server-initiated), create one
+      if (!currentResponseEl) {
+        currentResponseEl = document.createElement("div");
+        currentResponseEl.className = "msg bot";
+        transcript.appendChild(currentResponseEl);
+        responseParts = new Map();
+        responseOrder = [];
       }
-      // Track latest streaming text (persisted on "done")
-      if (ev.messageId) latestText.set(ev.messageId, ev.text);
+      responseParts.set(ev.messageId, ev.text);
+      responseOrder.push(ev.messageId);
+      renderCurrentResponse();
+    } else if (ev.type === "update") {
+      responseParts.set(ev.messageId, ev.text);
+      renderCurrentResponse();
     } else if (ev.type === "typing") {
       // Handled by busy/working indicator
     } else if (ev.type === "audio") {
@@ -462,13 +496,14 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       if (!audioPlaying) { speaking = false; resumeRecognition(); }
     } else if (ev.type === "done") {
       setBusy(false);
-      // Finalize bot message text from streaming updates and persist
-      for (const entry of history) {
-        if (entry.role === "bot" && entry.messageId && latestText.has(entry.messageId)) {
-          entry.text = latestText.get(entry.messageId);
-        }
+      // Persist the combined response as a single history entry
+      const combinedText = responseOrder.map(id => responseParts.get(id)).join("\\n").trim();
+      if (combinedText) {
+        history.push({ role: "bot", text: combinedText, ts: Date.now() });
       }
-      latestText.clear();
+      responseParts = new Map();
+      responseOrder = [];
+      currentResponseEl = null;
       saveHistory();
       speakLast();
     }
@@ -503,6 +538,15 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     if (!text.trim() || busy) return;
     addUserMessage(text.trim());
     setBusy(true);
+
+    // Create response bubble with placeholder as visual feedback
+    currentResponseEl = document.createElement("div");
+    currentResponseEl.className = "msg bot";
+    currentResponseEl.innerHTML = '<span class="thinking">Working...</span>';
+    transcript.appendChild(currentResponseEl);
+    responseParts = new Map();
+    responseOrder = [];
+    scrollDown();
 
     try {
       const res = await fetch("/api/message", {
