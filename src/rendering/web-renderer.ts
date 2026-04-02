@@ -63,8 +63,8 @@ export class WebRenderer implements Renderer {
 
   renderModeChange(mode: ExecutionMode): string {
     return mode === "plan"
-      ? `[mode] Entering plan mode`
-      : `[mode] Starting implementation`;
+      ? `[mode:plan] Entering plan mode`
+      : `[action:implement]`;
   }
 
   renderFatalError(message: string): string {

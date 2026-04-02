@@ -102,9 +102,26 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     color: #c79753; font-weight: 600;
     padding: 6px 10px; border-left: 3px solid #c79753; margin: 6px 0;
   }
-  .msg.bot .mode-change {
-    color: #777; font-size: 12px; font-style: italic; margin: 4px 0;
+  .msg.bot .mode-plan {
+    color: #c79753; font-size: 11px; background: #1c1810;
+    border-radius: 3px; padding: 4px 8px; margin: 6px 0;
+    display: inline-block;
   }
+  .msg.bot .action-implement {
+    display: flex; align-items: center; gap: 10px;
+    margin: 8px 0; padding: 8px 10px;
+    background: #111; border: 1px solid #2a2a2a; border-radius: 4px;
+  }
+  .msg.bot .action-implement .action-label {
+    flex: 1; color: #aaa; font-size: 13px;
+  }
+  .msg.bot .action-btn {
+    background: #1a2a1a; border: 1px solid #5fad78; color: #5fad78;
+    padding: 5px 12px; border-radius: 4px; cursor: pointer;
+    font-family: inherit; font-size: 12px; transition: all 0.15s;
+  }
+  .msg.bot .action-btn:hover { background: #243a24; border-color: #7cc795; }
+  .msg.bot .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .msg.bot .tool {
     color: #888; font-size: 11px; background: #111;
     border-radius: 3px; padding: 3px 7px; margin: 2px 0;
@@ -427,10 +444,17 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
         i++; continue;
       }
 
-      // Mode change (plan / execute)
-      if (line.startsWith("[mode]")) {
+      // Plan mode entering
+      if (line.startsWith("[mode:plan]")) {
         prevKind = "other";
-        out.push('<div class="mode-change">' + esc(line.slice(6).trim()) + '</div>');
+        out.push('<div class="mode-plan">' + esc(line.slice(11).trim() || "Entering plan mode") + '</div>');
+        i++; continue;
+      }
+
+      // Implementation action button
+      if (line.startsWith("[action:implement]")) {
+        prevKind = "other";
+        out.push('<div class="action-implement"><span class="action-label">Plan complete</span><button class="action-btn" data-action="implement">Implement now</button></div>');
         i++; continue;
       }
 
@@ -797,6 +821,18 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     const text = textfield.value;
     textfield.value = "";
     send(text);
+  });
+
+  // -- Action buttons (e.g. "Implement now") --
+  transcript.addEventListener("click", (e) => {
+    const btn = e.target.closest(".action-btn");
+    if (!btn || busy) return;
+    const action = btn.dataset.action;
+    if (action === "implement") {
+      btn.disabled = true;
+      btn.textContent = "Starting\\u2026";
+      send("Please start implementation");
+    }
   });
 
 })();

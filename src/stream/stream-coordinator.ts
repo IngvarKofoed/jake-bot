@@ -164,9 +164,9 @@ export class StreamCoordinator {
           break;
 
         case "mode_change":
-          buffer += this.renderer.renderModeChange(ev.mode);
-          await split();
-          await flush();
+          await finalize();
+          buffer = this.renderer.renderModeChange(ev.mode);
+          await finalize();
           break;
 
         case "complete":

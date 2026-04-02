@@ -61,8 +61,8 @@ export class DiscordRenderer implements Renderer {
 
   renderModeChange(mode: ExecutionMode): string {
     return mode === "plan"
-      ? `\n-# \u{1F4CB} Entering plan mode\n`
-      : `\n-# \u{1F680} Starting implementation\n`;
+      ? `-# \u{1F4CB} Entering plan mode`
+      : `-# \u{1F680} Starting implementation`;
   }
 
   renderFatalError(message: string): string {

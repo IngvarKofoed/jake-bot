@@ -48,8 +48,8 @@ export class WhatsAppRenderer implements Renderer {
 
   renderModeChange(mode: ExecutionMode): string {
     return mode === "plan"
-      ? `_Entering plan mode_\n`
-      : `_Starting implementation_\n`;
+      ? `_Entering plan mode_`
+      : `_Starting implementation_`;
   }
 
   renderFatalError(message: string): string {

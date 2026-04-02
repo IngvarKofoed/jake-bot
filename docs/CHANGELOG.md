@@ -155,6 +155,13 @@
 - Graceful handling of corrupt, missing, or stale session files — logs a warning and starts fresh
 - No adapter changes needed: persisted sessions are loaded into the Map at construction time, so `get()` finds them transparently
 
+## 28. Improve web rendering of plan mode and implement action
+
+- Mode changes now finalize the buffer (own message chunk) so they don't run into adjacent content
+- "Entering plan mode" renders as a styled inline block (warm accent, like a tool header) in the web frontend
+- "Starting implementation" renders as an interactive button ("Implement now") in the web frontend — clicking sends "Please start implementation" and disables the button
+- Removed extra newlines from all renderers since the coordinator now handles separation via finalize
+
 ## 27. Add input_request and mode_change event abstractions
 
 - New `InputRequestEvent` (`type: "input_request"`) for when the LLM asks the user a question — platform-agnostic, each plugin maps its SDK-specific tools to it

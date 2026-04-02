@@ -48,8 +48,8 @@ export class TelegramRenderer implements Renderer {
 
   renderModeChange(mode: ExecutionMode): string {
     return mode === "plan"
-      ? `<i>Entering plan mode</i>\n`
-      : `<i>Starting implementation</i>\n`;
+      ? `<i>Entering plan mode</i>`
+      : `<i>Starting implementation</i>`;
   }
 
   renderFatalError(message: string): string {
