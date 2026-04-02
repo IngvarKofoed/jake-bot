@@ -147,3 +147,18 @@
 - Audio chunks stream to the browser via existing SSE connection as `audio` events; client queues and plays sequentially
 - Graceful fallback: TTS silently disabled when `GOOGLE_API_KEY` is absent
 - TTS toggle, Escape-to-cancel, and mic pause/resume during playback all preserved
+
+## 25. Persist conversation sessions across bot restarts
+
+- `ActiveConversations` now loads/saves a JSON file (`~/.jake-bot/sessions.json`) on every mutation so conversations survive restarts
+- New `SESSIONS_FILE` env var to override the default path (empty string disables persistence)
+- Graceful handling of corrupt, missing, or stale session files — logs a warning and starts fresh
+- No adapter changes needed: persisted sessions are loaded into the Map at construction time, so `get()` finds them transparently
+
+## 26. Web adapter: survive page refresh (session + message history)
+
+- Session ID now stored in `localStorage` instead of `sessionStorage`, so it persists across refresh and tab close
+- Chat transcript saved to `localStorage` (capped at 200 entries) — restored into the DOM on page load
+- Bot message text finalized from streaming updates on "done" event to avoid localStorage thrashing
+- Server emits a "restored" system event on SSE connect when an active conversation exists, restoring the plugin label
+- TTS toggle state also persisted in `localStorage`

@@ -120,6 +120,18 @@ export class WebAdapter implements BotAdapter {
     };
     emitter.on("system", onSystem);
 
+    // Restore conversation status on reconnect (e.g. page refresh)
+    const userId = `web:${session}`;
+    const convo = this.conversations.get(userId, cid);
+    if (convo) {
+      const plugin = this.plugins.get(convo.pluginId);
+      const restoreData: Record<string, unknown> = {
+        type: "restored",
+        plugin: plugin?.displayName ?? convo.pluginId,
+      };
+      res.write(`event: system\ndata: ${JSON.stringify(restoreData)}\n\n`);
+    }
+
     // Heartbeat to prevent proxy timeouts
     const heartbeat = setInterval(() => {
       res.write(":heartbeat\n\n");

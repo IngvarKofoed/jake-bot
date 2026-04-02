@@ -202,11 +202,38 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
 
 <script>
 (function() {
-  // -- Session --
-  let session = sessionStorage.getItem("jakebot_session");
+  // -- Session (localStorage so it survives refresh / tab close) --
+  let session = localStorage.getItem("jakebot_session");
   if (!session) {
     session = crypto.randomUUID();
-    sessionStorage.setItem("jakebot_session", session);
+    localStorage.setItem("jakebot_session", session);
+  }
+
+  // -- History persistence --
+  const HISTORY_KEY = "jakebot_history_" + session;
+  const MAX_HISTORY = 200;
+  let history = [];
+  const latestText = new Map(); // messageId -> latest streaming text
+
+  function loadHistory() {
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      if (raw) history = JSON.parse(raw);
+      if (!Array.isArray(history)) history = [];
+    } catch { history = []; }
+  }
+
+  function saveHistory() {
+    while (history.length > MAX_HISTORY) history.shift();
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    } catch { /* localStorage full — degrade gracefully */ }
+  }
+
+  function clearHistory() {
+    history = [];
+    latestText.clear();
+    try { localStorage.removeItem(HISTORY_KEY); } catch {}
   }
 
   // -- DOM refs --
@@ -225,8 +252,36 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   let listening = false;
   let busy = false;
   let speaking = false;
-  let ttsEnabled = true;
+  let ttsEnabled = localStorage.getItem("jakebot_tts") !== "off";
   const messages = new Map(); // messageId -> DOM element
+
+  // Sync TTS toggle class with persisted state
+  ttsToggle.classList.toggle("active", ttsEnabled);
+
+  // -- Restore history from localStorage --
+  function restoreHistory() {
+    loadHistory();
+    for (const entry of history) {
+      if (entry.role === "user") {
+        const el = document.createElement("div");
+        el.className = "msg user";
+        el.textContent = entry.text;
+        transcript.appendChild(el);
+      } else if (entry.role === "bot") {
+        const el = document.createElement("div");
+        el.className = "msg bot";
+        el.innerHTML = renderBotHtml(entry.text);
+        transcript.appendChild(el);
+        if (entry.messageId) messages.set(entry.messageId, el);
+      } else if (entry.role === "system") {
+        const el = document.createElement("div");
+        el.className = "msg system";
+        el.textContent = entry.text;
+        transcript.appendChild(el);
+      }
+    }
+    scrollDown();
+  }
 
   // -- SSE connection --
   let sse;
@@ -274,8 +329,13 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
         addSystemMessage("Error: " + (data.message || "Unknown error"));
         setBusy(false);
       }
+      if (data.type === "restored") {
+        pluginLabel.textContent = data.plugin || "active";
+        setBusy(false);
+      }
     });
   }
+  restoreHistory();
   connectSSE();
 
   function renderBotHtml(raw) {
@@ -379,12 +439,17 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       transcript.appendChild(el);
       messages.set(ev.messageId, el);
       scrollDown();
+      // Track in history (text will be finalized on "done")
+      history.push({ role: "bot", text: ev.text, messageId: ev.messageId, ts: Date.now() });
+      latestText.set(ev.messageId, ev.text);
     } else if (ev.type === "update") {
       const el = messages.get(ev.messageId);
       if (el) {
         el.innerHTML = renderBotHtml(ev.text);
         scrollDown();
       }
+      // Track latest streaming text (persisted on "done")
+      if (ev.messageId) latestText.set(ev.messageId, ev.text);
     } else if (ev.type === "typing") {
       // Handled by busy/working indicator
     } else if (ev.type === "audio") {
@@ -395,6 +460,14 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       if (!audioPlaying) { speaking = false; resumeRecognition(); }
     } else if (ev.type === "done") {
       setBusy(false);
+      // Finalize bot message text from streaming updates and persist
+      for (const entry of history) {
+        if (entry.role === "bot" && entry.messageId && latestText.has(entry.messageId)) {
+          entry.text = latestText.get(entry.messageId);
+        }
+      }
+      latestText.clear();
+      saveHistory();
       speakLast();
     }
   }
@@ -409,6 +482,8 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     el.textContent = text;
     transcript.appendChild(el);
     scrollDown();
+    history.push({ role: "user", text, ts: Date.now() });
+    saveHistory();
   }
 
   function addSystemMessage(text) {
@@ -417,6 +492,8 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     el.textContent = text;
     transcript.appendChild(el);
     scrollDown();
+    history.push({ role: "system", text, ts: Date.now() });
+    saveHistory();
   }
 
   // -- Send message --
@@ -460,6 +537,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   ttsToggle.addEventListener("click", () => {
     ttsEnabled = !ttsEnabled;
     ttsToggle.classList.toggle("active", ttsEnabled);
+    localStorage.setItem("jakebot_tts", ttsEnabled ? "on" : "off");
     if (!ttsEnabled) {
       cancelAudio();
     }

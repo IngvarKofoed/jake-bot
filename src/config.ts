@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { join } from "node:path";
 import "dotenv/config";
 
 export type Adapter = "discord" | "web" | "both";
@@ -28,6 +29,8 @@ export interface BotConfig {
   defaultPlugin: string;
   /** Google API key for Cloud TTS (optional — disables server TTS when absent). */
   googleApiKey: string | undefined;
+  /** Path to the session persistence file (empty string disables persistence). */
+  sessionsFile: string;
 }
 
 export function loadConfig(): BotConfig {
@@ -47,6 +50,7 @@ export function loadConfig(): BotConfig {
     webPort: parseInt(process.env.WEB_PORT ?? "3000", 10),
     defaultPlugin: process.env.DEFAULT_PLUGIN ?? "claude",
     googleApiKey: process.env.GOOGLE_API_KEY,
+    sessionsFile: process.env.SESSIONS_FILE ?? join(homedir(), ".jake-bot", "sessions.json"),
   };
 }
 
