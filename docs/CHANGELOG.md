@@ -161,13 +161,14 @@
 - Added `discardPendingResponse()` helper that removes the placeholder bubble if no real content arrived
 - Called at the top of the SSE system event handler so any command-only response cleans up automatically
 
-## 28. Move plan approval into the core input_request abstraction
+## 28. Structured options for input requests
 
-- `ExitPlanMode` now emits `input_request(plan_approval)` instead of `mode_change(execute)` — every adapter/renderer handles it centrally
-- New `InputRequestKind: "plan_approval"` alongside existing `"question"`
-- `ExecutionMode` simplified to just `"plan"` (no more `"execute"`)
-- All renderers branch on `plan_approval` vs `question` in `renderInputRequest`
-- Web frontend: plan approval renders as a card with label + "Implement now" button; clicking sends "Please start implementation"
+- `InputRequestEvent` now carries an `options` array (`{ label, description? }`) alongside `text`
+- Claude mapper extracts structured questions from `AskUserQuestion` tool (header, question, 2-4 options with label+description, multiSelect)
+- `ExitPlanMode` emits `input_request(plan_approval)` with a single "Implement now" option
+- All renderers receive and display options: Discord uses blockquotes, Telegram uses bold, WhatsApp uses bold
+- Web frontend renders options as clickable buttons inside a styled card; clicking sends the option label as a message, disables all sibling buttons, and highlights the selection
+- Option descriptions shown as tooltips on hover in the web frontend
 - Mode changes finalize the buffer so they don't run into adjacent content
 
 ## 27. Add input_request and mode_change event abstractions

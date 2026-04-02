@@ -1,5 +1,5 @@
 import type { Renderer } from "./types.js";
-import type { BlockEmitEvent, InputRequestKind, ExecutionMode } from "../stream/events.js";
+import type { BlockEmitEvent, InputRequestKind, InputRequestOption, ExecutionMode } from "../stream/events.js";
 
 const BARE_URL_RE = /(?<![<(])(https?:\/\/\S+)/g;
 
@@ -55,9 +55,14 @@ export class DiscordRenderer implements Renderer {
     return `${prefix}\`\`\`\n${truncated}\n\`\`\``;
   }
 
-  renderInputRequest(kind: InputRequestKind, text: string): string {
-    if (kind === "plan_approval") return `\u{1F680} ${text}`;
-    return `\u2753 ${text}`;
+  renderInputRequest(kind: InputRequestKind, text: string, options: InputRequestOption[]): string {
+    const icon = kind === "plan_approval" ? "\u{1F680}" : "\u2753";
+    let out = `${icon} ${text}`;
+    if (options.length > 0) {
+      const list = options.map((o) => `> **${o.label}**${o.description ? ` \u2014 ${o.description}` : ""}`);
+      out += `\n${list.join("\n")}`;
+    }
+    return out;
   }
 
   renderModeChange(_mode: ExecutionMode): string {

@@ -159,7 +159,7 @@ export class StreamCoordinator {
 
         case "input_request":
           await finalize();
-          buffer = this.renderer.renderInputRequest(ev.request.kind, ev.request.text);
+          buffer = this.renderer.renderInputRequest(ev.request.kind, ev.request.text, ev.request.options);
           await finalize();
           break;
 

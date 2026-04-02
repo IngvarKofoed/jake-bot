@@ -98,30 +98,31 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     color: #777; font-style: italic; font-size: 12px;
     border-left: 2px solid #333; padding-left: 8px; margin: 4px 0;
   }
-  .msg.bot .question {
-    color: #c79753; font-weight: 600;
-    padding: 6px 10px; border-left: 3px solid #c79753; margin: 6px 0;
+  .msg.bot .input-request {
+    margin: 8px 0; padding: 8px 10px;
+    background: #111; border: 1px solid #2a2a2a; border-radius: 4px;
   }
+  .msg.bot .input-request .ir-question {
+    color: #c79753; font-weight: 600; margin-bottom: 6px; font-size: 13px;
+  }
+  .msg.bot .input-request .ir-options {
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .msg.bot .ir-opt-btn {
+    background: #1a2a1a; border: 1px solid #5fad78; color: #5fad78;
+    padding: 5px 12px; border-radius: 4px; cursor: pointer;
+    font-family: inherit; font-size: 12px; transition: all 0.15s;
+  }
+  .msg.bot .ir-opt-btn:hover { background: #243a24; border-color: #7cc795; }
+  .msg.bot .ir-opt-btn.selected {
+    background: #2a4a2a; border-color: #5fad78; color: #fff;
+  }
+  .msg.bot .ir-opt-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .msg.bot .mode-plan {
     color: #c79753; font-size: 11px; background: #1c1810;
     border-radius: 3px; padding: 4px 8px; margin: 6px 0;
     display: inline-block;
   }
-  .msg.bot .action-implement {
-    display: flex; align-items: center; gap: 10px;
-    margin: 8px 0; padding: 8px 10px;
-    background: #111; border: 1px solid #2a2a2a; border-radius: 4px;
-  }
-  .msg.bot .action-implement .action-label {
-    flex: 1; color: #aaa; font-size: 13px;
-  }
-  .msg.bot .action-btn {
-    background: #1a2a1a; border: 1px solid #5fad78; color: #5fad78;
-    padding: 5px 12px; border-radius: 4px; cursor: pointer;
-    font-family: inherit; font-size: 12px; transition: all 0.15s;
-  }
-  .msg.bot .action-btn:hover { background: #243a24; border-color: #7cc795; }
-  .msg.bot .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .msg.bot .tool {
     color: #888; font-size: 11px; background: #111;
     border-radius: 3px; padding: 3px 7px; margin: 2px 0;
@@ -440,10 +441,32 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
         i++; continue;
       }
 
-      // Question (input request from LLM)
-      if (line.startsWith("[question]")) {
+      // Input request (question with options)
+      if (line.startsWith("[input_request] ")) {
         prevKind = "other";
-        out.push('<div class="question">' + inlineMd(line.slice(10).trim()) + '</div>');
+        const raw = line.slice(16);
+        // Options JSON follows the question text after the first [ character
+        const jsonStart = raw.indexOf("[");
+        let question, opts;
+        if (jsonStart >= 0) {
+          question = raw.slice(0, jsonStart).trim();
+          try { opts = JSON.parse(raw.slice(jsonStart)); } catch { opts = []; }
+        } else {
+          question = raw.trim();
+          opts = [];
+        }
+        let html = '<div class="input-request"><div class="ir-question">' + inlineMd(question) + '</div>';
+        if (opts.length > 0) {
+          html += '<div class="ir-options">';
+          for (const o of opts) {
+            const lbl = esc(o.label || "");
+            const title = o.description ? ' title="' + esc(o.description) + '"' : "";
+            html += '<button class="ir-opt-btn" data-reply="' + lbl + '"' + title + '>' + lbl + '</button>';
+          }
+          html += '</div>';
+        }
+        html += '</div>';
+        out.push(html);
         i++; continue;
       }
 
@@ -451,14 +474,6 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       if (line.startsWith("[mode:plan]")) {
         prevKind = "other";
         out.push('<div class="mode-plan">' + esc(line.slice(11).trim() || "Entering plan mode") + '</div>');
-        i++; continue;
-      }
-
-      // Plan approval action button
-      if (line.startsWith("[action:implement]")) {
-        prevKind = "other";
-        const label = esc(line.slice(18).trim() || "Plan complete. Ready to implement?");
-        out.push('<div class="action-implement"><span class="action-label">' + label + '</span><button class="action-btn" data-action="implement">Implement now</button></div>');
         i++; continue;
       }
 
@@ -837,16 +852,21 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     send(text);
   });
 
-  // -- Action buttons (e.g. "Implement now") --
+  // -- Input request option buttons --
   transcript.addEventListener("click", (e) => {
-    const btn = e.target.closest(".action-btn");
-    if (!btn || busy) return;
-    const action = btn.dataset.action;
-    if (action === "implement") {
-      btn.disabled = true;
-      btn.textContent = "Starting\\u2026";
-      send("Please start implementation");
+    const btn = e.target.closest(".ir-opt-btn");
+    if (!btn || busy || btn.disabled) return;
+    const reply = btn.dataset.reply;
+    if (!reply) return;
+    // Disable all sibling option buttons and highlight the selected one
+    const container = btn.closest(".ir-options");
+    if (container) {
+      for (const b of container.querySelectorAll(".ir-opt-btn")) {
+        b.disabled = true;
+      }
     }
+    btn.classList.add("selected");
+    send(reply);
   });
 
 })();

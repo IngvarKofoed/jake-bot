@@ -1,4 +1,4 @@
-import type { BotEvent, ToolResultContent, InputRequestEvent, ModeChangeEvent } from "../../stream/events.js";
+import type { BotEvent, ToolResultContent, InputRequestEvent, InputRequestOption, ModeChangeEvent } from "../../stream/events.js";
 import { cleanToolName } from "../util.js";
 
 // Type guards for Claude SDK message types.
@@ -132,15 +132,15 @@ function mapSpecialTool(
   ts: number,
 ): InputRequestEvent | ModeChangeEvent | undefined {
   if (tu.name === "AskUserQuestion") {
-    const text =
-      typeof tu.input.question === "string"
-        ? tu.input.question
-        : JSON.stringify(tu.input);
     return {
       type: "input_request",
       pluginId,
       ts,
-      request: { id: nextId(), kind: "question", text },
+      request: {
+        id: nextId(),
+        kind: "question",
+        ...extractQuestions(tu.input),
+      },
     };
   }
   if (tu.name === "EnterPlanMode") {
@@ -151,10 +151,46 @@ function mapSpecialTool(
       type: "input_request",
       pluginId,
       ts,
-      request: { id: nextId(), kind: "plan_approval", text: "Plan complete. Ready to implement?" },
+      request: {
+        id: nextId(),
+        kind: "plan_approval",
+        text: "Plan complete. Ready to implement?",
+        options: [{ label: "Implement now" }],
+      },
     };
   }
   return undefined;
+}
+
+/**
+ * Extract question text and options from AskUserQuestion tool input.
+ *
+ * The SDK schema uses `questions[]` (array of up to 4), each with
+ * `question`, `header`, `options[]`, and `multiSelect`. We flatten
+ * the first question into our simpler model. If the input doesn't
+ * match the expected shape, fall back to stringified text.
+ */
+function extractQuestions(
+  input: Record<string, unknown>,
+): { text: string; options: InputRequestOption[] } {
+  const questions = input.questions;
+  if (Array.isArray(questions) && questions.length > 0) {
+    const q = questions[0] as Record<string, unknown>;
+    const text = typeof q.question === "string" ? q.question : JSON.stringify(input);
+    const rawOpts = Array.isArray(q.options) ? q.options : [];
+    const options: InputRequestOption[] = rawOpts
+      .filter((o): o is Record<string, unknown> => o != null && typeof o === "object")
+      .map((o) => ({
+        label: typeof o.label === "string" ? o.label : String(o.label),
+        ...(typeof o.description === "string" ? { description: o.description } : {}),
+      }));
+    return { text, options };
+  }
+  // Fallback for unexpected shapes
+  const text = typeof input.question === "string"
+    ? input.question
+    : JSON.stringify(input);
+  return { text, options: [] };
 }
 
 function normalizeToolResultContent(

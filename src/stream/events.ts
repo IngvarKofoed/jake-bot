@@ -109,12 +109,18 @@ export type BlockEmitEvent =
 
 export type InputRequestKind = "question" | "plan_approval";
 
+export interface InputRequestOption {
+  label: string;
+  description?: string;
+}
+
 export interface InputRequestEvent extends BaseEvent {
   type: "input_request";
   request: {
     id: string;
     kind: InputRequestKind;
     text: string;
+    options: InputRequestOption[];
   };
 }
 
