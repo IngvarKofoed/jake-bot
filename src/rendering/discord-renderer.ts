@@ -55,14 +55,13 @@ export class DiscordRenderer implements Renderer {
     return `${prefix}\`\`\`\n${truncated}\n\`\`\``;
   }
 
-  renderInputRequest(_kind: InputRequestKind, text: string): string {
+  renderInputRequest(kind: InputRequestKind, text: string): string {
+    if (kind === "plan_approval") return `\u{1F680} ${text}`;
     return `\u2753 ${text}`;
   }
 
-  renderModeChange(mode: ExecutionMode): string {
-    return mode === "plan"
-      ? `-# \u{1F4CB} Entering plan mode`
-      : `-# \u{1F680} Starting implementation`;
+  renderModeChange(_mode: ExecutionMode): string {
+    return `-# \u{1F4CB} Entering plan mode`;
   }
 
   renderFatalError(message: string): string {

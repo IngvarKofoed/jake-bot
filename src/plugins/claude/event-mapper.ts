@@ -147,7 +147,12 @@ function mapSpecialTool(
     return { type: "mode_change", pluginId, ts, mode: "plan" };
   }
   if (tu.name === "ExitPlanMode") {
-    return { type: "mode_change", pluginId, ts, mode: "execute" };
+    return {
+      type: "input_request",
+      pluginId,
+      ts,
+      request: { id: nextId(), kind: "plan_approval", text: "Plan complete. Ready to implement?" },
+    };
   }
   return undefined;
 }

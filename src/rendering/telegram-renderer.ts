@@ -42,14 +42,13 @@ export class TelegramRenderer implements Renderer {
     return `<b>${toolName}</b>(${preview})`;
   }
 
-  renderInputRequest(_kind: InputRequestKind, text: string): string {
+  renderInputRequest(kind: InputRequestKind, text: string): string {
+    if (kind === "plan_approval") return `\u{1F680} ${text}`;
     return `\u2753 ${text}`;
   }
 
-  renderModeChange(mode: ExecutionMode): string {
-    return mode === "plan"
-      ? `<i>Entering plan mode</i>`
-      : `<i>Starting implementation</i>`;
+  renderModeChange(_mode: ExecutionMode): string {
+    return `<i>Entering plan mode</i>`;
   }
 
   renderFatalError(message: string): string {

@@ -107,7 +107,7 @@ export type BlockEmitEvent =
 
 // -- INPUT_REQUEST: the LLM is asking the user a question --
 
-export type InputRequestKind = "question";
+export type InputRequestKind = "question" | "plan_approval";
 
 export interface InputRequestEvent extends BaseEvent {
   type: "input_request";
@@ -120,7 +120,7 @@ export interface InputRequestEvent extends BaseEvent {
 
 // -- MODE_CHANGE: the LLM changed its execution mode --
 
-export type ExecutionMode = "plan" | "execute";
+export type ExecutionMode = "plan";
 
 export interface ModeChangeEvent extends BaseEvent {
   type: "mode_change";

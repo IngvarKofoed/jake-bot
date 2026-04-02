@@ -57,14 +57,13 @@ export class WebRenderer implements Renderer {
     return `${prefix}${truncated}`;
   }
 
-  renderInputRequest(_kind: InputRequestKind, text: string): string {
+  renderInputRequest(kind: InputRequestKind, text: string): string {
+    if (kind === "plan_approval") return `[action:implement] ${text}`;
     return `[question] ${text}`;
   }
 
-  renderModeChange(mode: ExecutionMode): string {
-    return mode === "plan"
-      ? `[mode:plan] Entering plan mode`
-      : `[action:implement]`;
+  renderModeChange(_mode: ExecutionMode): string {
+    return `[mode:plan] Entering plan mode`;
   }
 
   renderFatalError(message: string): string {

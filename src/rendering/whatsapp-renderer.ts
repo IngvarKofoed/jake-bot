@@ -42,14 +42,13 @@ export class WhatsAppRenderer implements Renderer {
     return `*${toolName}*(${preview})`;
   }
 
-  renderInputRequest(_kind: InputRequestKind, text: string): string {
+  renderInputRequest(kind: InputRequestKind, text: string): string {
+    if (kind === "plan_approval") return `\u{1F680} ${text}`;
     return `\u2753 ${text}`;
   }
 
-  renderModeChange(mode: ExecutionMode): string {
-    return mode === "plan"
-      ? `_Entering plan mode_`
-      : `_Starting implementation_`;
+  renderModeChange(_mode: ExecutionMode): string {
+    return `_Entering plan mode_`;
   }
 
   renderFatalError(message: string): string {

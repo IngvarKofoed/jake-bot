@@ -451,10 +451,11 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
         i++; continue;
       }
 
-      // Implementation action button
+      // Plan approval action button
       if (line.startsWith("[action:implement]")) {
         prevKind = "other";
-        out.push('<div class="action-implement"><span class="action-label">Plan complete</span><button class="action-btn" data-action="implement">Implement now</button></div>');
+        const label = esc(line.slice(18).trim() || "Plan complete. Ready to implement?");
+        out.push('<div class="action-implement"><span class="action-label">' + label + '</span><button class="action-btn" data-action="implement">Implement now</button></div>');
         i++; continue;
       }
 
