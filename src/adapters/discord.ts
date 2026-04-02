@@ -51,6 +51,9 @@ export class DiscordAdapter implements BotAdapter {
   }
 
   async start(): Promise<void> {
+    if (!this.config.discordToken || !this.config.discordAppId) {
+      throw new Error("DISCORD_TOKEN and DISCORD_APP_ID are required for the Discord adapter");
+    }
     await this.registerCommands();
     await this.client.login(this.config.discordToken);
   }
@@ -114,8 +117,8 @@ export class DiscordAdapter implements BotAdapter {
   // -- Register slash commands on startup --
 
   private async registerCommands(): Promise<void> {
-    const rest = new REST({ version: "10" }).setToken(this.config.discordToken);
-    await rest.put(Routes.applicationCommands(this.config.discordAppId), {
+    const rest = new REST({ version: "10" }).setToken(this.config.discordToken!);
+    await rest.put(Routes.applicationCommands(this.config.discordAppId!), {
       body: this.commands.map((c) => c.toJSON()),
     });
     log.info("bot", "Slash commands registered");

@@ -1,11 +1,15 @@
 import { homedir } from "node:os";
 import "dotenv/config";
 
+export type Adapter = "discord" | "web" | "both";
+
 export interface BotConfig {
-  /** Discord bot token. */
-  discordToken: string;
-  /** Discord application ID (for registering slash commands). */
-  discordAppId: string;
+  /** Which adapter(s) to start. */
+  adapter: Adapter;
+  /** Discord bot token (required when adapter includes discord). */
+  discordToken: string | undefined;
+  /** Discord application ID (required when adapter includes discord). */
+  discordAppId: string | undefined;
   /** Default working directory for CLI plugins. */
   defaultWorkdir: string;
   /** Process manager MCP server port. */
@@ -18,25 +22,28 @@ export interface BotConfig {
   claudeMaxBudget: number;
   /** Gemini CLI binary path. */
   geminiBin: string;
+  /** Web adapter HTTP port. */
+  webPort: number;
+  /** Default plugin for the web adapter (auto-starts if no active conversation). */
+  defaultPlugin: string;
 }
 
 export function loadConfig(): BotConfig {
   const port = parseInt(process.env.PROCESS_MANAGER_PORT ?? "8901", 10);
+  const adapter = (process.env.ADAPTER ?? "discord") as Adapter;
 
   return {
-    discordToken: requireEnv("DISCORD_TOKEN"),
-    discordAppId: requireEnv("DISCORD_APP_ID"),
+    adapter,
+    discordToken: process.env.DISCORD_TOKEN,
+    discordAppId: process.env.DISCORD_APP_ID,
     defaultWorkdir: process.env.DEFAULT_WORKDIR ?? homedir(),
     processManagerPort: port,
     processManagerUrl: process.env.PROCESS_MANAGER_URL ?? `http://localhost:${port}/mcp`,
     claudeMaxTurns: parseInt(process.env.CLAUDE_MAX_TURNS ?? "30", 10),
     claudeMaxBudget: parseFloat(process.env.CLAUDE_MAX_BUDGET ?? "5.0"),
     geminiBin: process.env.GEMINI_BIN ?? "gemini",
+    webPort: parseInt(process.env.WEB_PORT ?? "3000", 10),
+    defaultPlugin: process.env.DEFAULT_PLUGIN ?? "claude",
   };
 }
 
-function requireEnv(key: string): string {
-  const val = process.env[key];
-  if (!val) throw new Error(`Missing required environment variable: ${key}`);
-  return val;
-}

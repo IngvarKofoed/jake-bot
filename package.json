@@ -7,6 +7,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
+    "dev:web": "ADAPTER=web tsx src/index.ts",
     "process-manager": "tsx src/process-manager/main.ts"
   },
   "dependencies": {

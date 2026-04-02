@@ -131,3 +131,11 @@
 ## 22. Stop truncating thinking message in Discord
 
 - Removed 80-character truncation from thinking preview in `DiscordRenderer.renderStreaming()` — full thinking text is now shown
+
+## 23. Add voice-controlled web adapter
+
+- New `WebAdapter` serves a self-contained HTML page with browser-native Web Speech API (STT + TTS) — 100% hands-free, zero external dependencies
+- `WebPlatform` bridges `StreamCoordinator` send/edit calls to per-session `EventEmitter`s consumed by SSE endpoints
+- `WebRenderer` outputs plain text suitable for TTS readback
+- Voice commands ("start claude", "end conversation", "switch to gemini") parsed before routing; auto-starts default plugin if no active conversation
+- `ADAPTER` env var selects `"discord"`, `"web"`, or `"both"`; dynamic imports keep discord.js out of web-only builds
