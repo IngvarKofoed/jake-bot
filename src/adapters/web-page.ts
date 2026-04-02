@@ -291,6 +291,8 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     sse.onopen = () => {
       connDot.classList.add("connected");
       connLabel.textContent = "connected";
+      // Reset busy state — if server restarted, in-flight work is lost
+      setBusy(false);
     };
 
     sse.onerror = () => {
