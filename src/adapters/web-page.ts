@@ -299,7 +299,14 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       connLabel.textContent = "connected";
       // Reset busy state — if server restarted, in-flight work is lost
       setBusy(false);
-      // Discard any partial response accumulator from a dead connection
+      // Persist any partial response before clearing (done event never fired)
+      if (responseOrder.length > 0) {
+        const combinedText = responseOrder.map(id => responseParts.get(id)).join("\\n").trim();
+        if (combinedText) {
+          history.push({ role: "bot", text: combinedText, ts: Date.now() });
+          saveHistory();
+        }
+      }
       responseParts = new Map();
       responseOrder = [];
       currentResponseEl = null;
