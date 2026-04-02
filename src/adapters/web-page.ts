@@ -348,6 +348,9 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
 
     sse.addEventListener("system", (e) => {
       const data = JSON.parse(e.data);
+      // System events mean the command was handled without LLM invocation —
+      // discard the placeholder "Working..." bubble if it's still pending.
+      discardPendingResponse();
       if (data.plugin) {
         pluginLabel.textContent = data.plugin;
       }
@@ -521,6 +524,16 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     const combined = responseOrder.map(id => responseParts.get(id)).join("\\n").trim();
     currentResponseEl.innerHTML = renderBotHtml(combined);
     scrollDown();
+  }
+
+  /** Remove the "Working..." placeholder bubble if no real content arrived. */
+  function discardPendingResponse() {
+    if (currentResponseEl && currentResponseEl.querySelector(".thinking")) {
+      currentResponseEl.remove();
+      currentResponseEl = null;
+      responseParts = new Map();
+      responseOrder = [];
+    }
   }
 
   function handlePlatformEvent(ev) {

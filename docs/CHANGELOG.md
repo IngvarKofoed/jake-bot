@@ -155,6 +155,12 @@
 - Graceful handling of corrupt, missing, or stale session files — logs a warning and starts fresh
 - No adapter changes needed: persisted sessions are loaded into the Map at construction time, so `get()` finds them transparently
 
+## 29. Fix orphaned "Working..." bubble for slash commands in web adapter
+
+- Slash/voice commands (e.g. `/claude`, `/end`, `/status`) no longer leave a `div.msg.bot` "Working..." placeholder in the transcript
+- Added `discardPendingResponse()` helper that removes the placeholder bubble if no real content arrived
+- Called at the top of the SSE system event handler so any command-only response cleans up automatically
+
 ## 28. Move plan approval into the core input_request abstraction
 
 - `ExitPlanMode` now emits `input_request(plan_approval)` instead of `mode_change(execute)` — every adapter/renderer handles it centrally
