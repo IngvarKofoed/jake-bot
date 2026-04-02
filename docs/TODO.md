@@ -1,0 +1,2 @@
+- In planning mode, choises are made, these are not handled good in the web adapter. Remember speach if enabled and how to answer using voice?
+- Every event from the LLM is in its own box in the web adapter, I dont think this is needed

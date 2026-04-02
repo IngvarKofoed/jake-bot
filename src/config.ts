@@ -26,6 +26,8 @@ export interface BotConfig {
   webPort: number;
   /** Default plugin for the web adapter (auto-starts if no active conversation). */
   defaultPlugin: string;
+  /** Google API key for Cloud TTS (optional — disables server TTS when absent). */
+  googleApiKey: string | undefined;
 }
 
 export function loadConfig(): BotConfig {
@@ -44,6 +46,7 @@ export function loadConfig(): BotConfig {
     geminiBin: process.env.GEMINI_BIN ?? "gemini",
     webPort: parseInt(process.env.WEB_PORT ?? "3000", 10),
     defaultPlugin: process.env.DEFAULT_PLUGIN ?? "claude",
+    googleApiKey: process.env.GOOGLE_API_KEY,
   };
 }
 

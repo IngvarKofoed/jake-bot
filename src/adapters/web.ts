@@ -16,6 +16,7 @@ import type { PluginContext } from "../plugins/types.js";
 import type { BotAdapter } from "./types.js";
 import { WEB_PAGE_HTML } from "./web-page.js";
 import { log } from "../core/logger.js";
+import { synthesizeStreaming } from "../core/google-tts.js";
 
 const TAG = "web";
 
@@ -73,6 +74,11 @@ export class WebAdapter implements BotAdapter {
 
     if (req.method === "POST" && url.pathname === "/api/message") {
       this.handleMessage(req, res);
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/tts") {
+      this.handleTTS(req, res);
       return;
     }
 
@@ -295,6 +301,61 @@ export class WebAdapter implements BotAdapter {
       this.emitSystem(cid, { type: "error", message: (err as Error).message });
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+  }
+
+  // -- TTS endpoint --
+
+  private handleTTS(req: IncomingMessage, res: ServerResponse): void {
+    let body = "";
+    req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+    req.on("end", () => {
+      void this.processTTS(body, res);
+    });
+  }
+
+  private async processTTS(body: string, res: ServerResponse): Promise<void> {
+    const apiKey = this.config.googleApiKey;
+    if (!apiKey) {
+      res.writeHead(501, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "TTS not configured (no GOOGLE_API_KEY)" }));
+      return;
+    }
+
+    let parsed: { session: string; text: string };
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Invalid JSON" }));
+      return;
+    }
+
+    const { session, text } = parsed;
+    if (!session || !text) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Missing session or text" }));
+      return;
+    }
+
+    const cid = channelId(session);
+
+    // Return immediately — audio chunks arrive via SSE
+    res.writeHead(202, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+
+    try {
+      const emitter = this.platform.subscribe(cid);
+      await synthesizeStreaming(text, apiKey, (audio, index, total) => {
+        if (audio) {
+          emitter.emit("event", { type: "audio", audio, index, total } as WebPlatformEvent);
+        }
+      });
+      emitter.emit("event", { type: "audio_done" } as WebPlatformEvent);
+    } catch (err) {
+      log.error(TAG, `TTS error: ${err instanceof Error ? err.message : String(err)}`);
+      const emitter = this.platform.subscribe(cid);
+      emitter.emit("event", { type: "audio_done" } as WebPlatformEvent);
     }
   }
 

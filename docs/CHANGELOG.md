@@ -139,3 +139,11 @@
 - `WebRenderer` outputs plain text suitable for TTS readback
 - Voice commands ("start claude", "end conversation", "switch to gemini") parsed before routing; auto-starts default plugin if no active conversation
 - `ADAPTER` env var selects `"discord"`, `"web"`, or `"both"`; dynamic imports keep discord.js out of web-only builds
+
+## 24. Server-side TTS via Google Cloud Text-to-Speech
+
+- Replaced browser `speechSynthesis` with Google Cloud TTS (Standard model) for higher quality voice output
+- New `src/core/google-tts.ts` — REST API client with sentence splitting and pipelined concurrent synthesis (up to 3 in-flight) for minimum time-to-first-audio
+- Audio chunks stream to the browser via existing SSE connection as `audio` events; client queues and plays sequentially
+- Graceful fallback: TTS silently disabled when `GOOGLE_API_KEY` is absent
+- TTS toggle, Escape-to-cancel, and mic pause/resume during playback all preserved

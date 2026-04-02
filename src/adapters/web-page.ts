@@ -387,6 +387,12 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       }
     } else if (ev.type === "typing") {
       // Handled by busy/working indicator
+    } else if (ev.type === "audio") {
+      if (ttsEnabled && ev.audio) enqueueAudio(ev.audio);
+    } else if (ev.type === "audio_done") {
+      audioDone = true;
+      // If nothing is playing (all chunks already finished), clean up
+      if (!audioPlaying) { speaking = false; resumeRecognition(); }
     } else if (ev.type === "done") {
       setBusy(false);
       speakLast();
@@ -445,22 +451,78 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     working.classList.toggle("active", b);
   }
 
-  // -- TTS --
-  const synth = window.speechSynthesis;
+  // -- TTS (server-side via Google Cloud TTS) --
+  const audioQueue = [];
+  let audioPlaying = false;
+  let audioDone = false; // true once all chunks received for current response
 
   // -- TTS toggle --
   ttsToggle.addEventListener("click", () => {
     ttsEnabled = !ttsEnabled;
     ttsToggle.classList.toggle("active", ttsEnabled);
     if (!ttsEnabled) {
-      synth.cancel();
-      speaking = false;
-      resumeRecognition();
+      cancelAudio();
     }
   });
 
+  function cancelAudio() {
+    // Stop current playback and clear queue
+    for (const url of audioQueue) URL.revokeObjectURL(url);
+    audioQueue.length = 0;
+    audioPlaying = false;
+    audioDone = false;
+    speaking = false;
+    // Stop any currently playing audio element
+    const playing = document.querySelector("audio[data-tts]");
+    if (playing) {
+      playing.pause();
+      playing.remove();
+    }
+    resumeRecognition();
+  }
+
+  function enqueueAudio(base64) {
+    const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: "audio/mpeg" });
+    const url = URL.createObjectURL(blob);
+    audioQueue.push(url);
+    if (!audioPlaying) playNext();
+  }
+
+  function playNext() {
+    if (audioQueue.length === 0) {
+      audioPlaying = false;
+      if (audioDone) {
+        speaking = false;
+        resumeRecognition();
+      }
+      return;
+    }
+    audioPlaying = true;
+    speaking = true;
+    pauseRecognition();
+    const url = audioQueue.shift();
+    const audio = new Audio(url);
+    audio.setAttribute("data-tts", "1");
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      audio.remove();
+      playNext();
+    };
+    audio.onerror = () => {
+      URL.revokeObjectURL(url);
+      audio.remove();
+      playNext();
+    };
+    audio.play().catch(() => {
+      URL.revokeObjectURL(url);
+      audio.remove();
+      playNext();
+    });
+  }
+
   function speakLast() {
-    if (!synth || !ttsEnabled) return;
+    if (!ttsEnabled) return;
     const botMsgs = transcript.querySelectorAll(".msg.bot");
     if (botMsgs.length === 0) return;
     const last = botMsgs[botMsgs.length - 1];
@@ -472,18 +534,24 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       if (line.startsWith("[thinking]")) return false;
       if (line.startsWith("Duration:")) return false;
       return true;
-    }).join(". ");
+    }).join(". ").trim();
 
-    if (!text.trim()) return;
-    if (text.length > 2000) text = text.slice(0, 2000) + "... truncated.";
+    if (!text || text.length < 2) return;
+    if (text.length > 4000) text = text.slice(0, 4000);
 
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.rate = 1.1;
+    // Reset audio state for new response
+    cancelAudio();
     speaking = true;
     pauseRecognition();
-    utter.onend = () => { speaking = false; resumeRecognition(); };
-    utter.onerror = () => { speaking = false; resumeRecognition(); };
-    synth.speak(utter);
+
+    fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session, text }),
+    }).catch(() => {
+      speaking = false;
+      resumeRecognition();
+    });
   }
 
   // -- Speech Recognition --
@@ -567,9 +635,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       else startListening();
     }
     if (e.code === "Escape") {
-      synth.cancel();
-      speaking = false;
-      resumeRecognition();
+      cancelAudio();
     }
   });
 

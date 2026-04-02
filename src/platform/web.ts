@@ -3,10 +3,16 @@ import { randomUUID } from "node:crypto";
 import type { ChatPlatform, MessageRef, OutboundMessage, PlatformConstraints } from "./types.js";
 
 export interface WebPlatformEvent {
-  type: "message" | "update" | "typing" | "done";
+  type: "message" | "update" | "typing" | "done" | "audio" | "audio_done";
   messageId?: string;
   text?: string;
   active?: boolean;
+  /** Base64-encoded MP3 audio data (for type "audio"). */
+  audio?: string;
+  /** Chunk index, 0-based (for type "audio"). */
+  index?: number;
+  /** Total number of audio chunks (for type "audio"). */
+  total?: number;
 }
 
 /**
