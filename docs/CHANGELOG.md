@@ -257,4 +257,5 @@
 
 ## 41. Fix double-slash in web autocomplete command icon
 
-- Removed `/` prefix from autocomplete label (the gray `/` icon already provides it), fixing the redundant double-slash appearance
+- Removed gray `/` icon from slash-command autocomplete items — label already contains the `/` prefix
+- Tightened autocomplete item padding and skip rendering the empty icon span so commands sit closer to the box edge
