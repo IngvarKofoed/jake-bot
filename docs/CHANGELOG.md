@@ -202,3 +202,9 @@
 - Bot message text finalized from streaming updates on "done" event to avoid localStorage thrashing
 - Server emits a "restored" system event on SSE connect when an active conversation exists, restoring the plugin label
 - TTS toggle state also persisted in `localStorage`
+
+## 32. Fix /clear not clearing web UI transcript
+
+- Backend sends `cleared: true` flag on the "started" system event emitted by `/clear`
+- Frontend handles the flag by calling `clearHistory()` (wipes localStorage) and clearing the transcript DOM
+- Shows a "Context cleared. Fresh {plugin} conversation." system message after clearing

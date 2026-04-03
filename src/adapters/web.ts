@@ -230,7 +230,7 @@ export class WebAdapter implements BotAdapter {
           await plugin.clear?.(existing.sessionId, existing.workdir);
         }
         this.conversations.clear(userId, cid);
-        this.emitSystem(cid, { type: "started", plugin: plugin.displayName, workdir: existing.workdir });
+        this.emitSystem(cid, { type: "started", plugin: plugin.displayName, workdir: existing.workdir, cleared: true });
       }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true }));

@@ -412,12 +412,15 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
         setBusy(false);
       }
       if (data.type === "started") {
-        setPluginLabel(data.plugin || "active");
-        workdirLabel.textContent = shortenPath(data.workdir || "");
-        // Only show system message for auto-start (not explicit /commands)
-        if (!lastSendWasCommand) {
+        if (data.cleared) {
+          clearHistory();
+          transcript.innerHTML = "";
+          addSystemMessage("Context cleared. Fresh " + (data.plugin || "") + " conversation.");
+        } else if (!lastSendWasCommand) {
           addSystemMessage("Started " + (data.plugin || "") + " conversation.");
         }
+        setPluginLabel(data.plugin || "active");
+        workdirLabel.textContent = shortenPath(data.workdir || "");
         lastSendWasCommand = false;
         setBusy(false);
       }
