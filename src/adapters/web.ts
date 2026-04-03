@@ -128,6 +128,7 @@ export class WebAdapter implements BotAdapter {
       const restoreData: Record<string, unknown> = {
         type: "restored",
         plugin: plugin?.displayName ?? convo.pluginId,
+        workdir: convo.workdir,
       };
       res.write(`event: system\ndata: ${JSON.stringify(restoreData)}\n\n`);
     }
@@ -225,7 +226,7 @@ export class WebAdapter implements BotAdapter {
         this.emitSystem(cid, { type: "error", message: "No active conversation" });
       } else {
         const plugin = this.plugins.get(convo.pluginId);
-        this.emitSystem(cid, { type: "started", plugin: plugin?.displayName ?? convo.pluginId });
+        this.emitSystem(cid, { type: "started", plugin: plugin?.displayName ?? convo.pluginId, workdir: convo.workdir });
       }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
@@ -260,8 +261,8 @@ export class WebAdapter implements BotAdapter {
     if (!this.conversations.get(userId, cid)) {
       const pluginId = this.config.defaultPlugin;
       try {
-        this.conversations.start(userId, cid, pluginId, this.config.defaultWorkdir);
-        this.emitSystem(cid, { type: "started", plugin: this.plugins.require(pluginId).displayName });
+        const convo = this.conversations.start(userId, cid, pluginId, this.config.defaultWorkdir);
+        this.emitSystem(cid, { type: "started", plugin: this.plugins.require(pluginId).displayName, workdir: convo.workdir });
       } catch (err) {
         this.emitSystem(cid, { type: "error", message: (err as Error).message });
         res.writeHead(500, { "Content-Type": "application/json" });
@@ -305,8 +306,8 @@ export class WebAdapter implements BotAdapter {
     try {
       // End existing conversation if any
       this.conversations.end(userId, cid);
-      this.conversations.start(userId, cid, pluginId, workdir);
-      this.emitSystem(cid, { type: "started", plugin: plugin.displayName });
+      const convo = this.conversations.start(userId, cid, pluginId, workdir);
+      this.emitSystem(cid, { type: "started", plugin: plugin.displayName, workdir: convo.workdir });
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
     } catch (err) {

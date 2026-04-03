@@ -6,3 +6,6 @@
 - Move "Claude Code" to the left, only show Disconnected/Connecting with starting CAPS to the right of "Claude Code". Actually, change "Claude Code" to "Jake". Then TTS should go to the right as it is now.
 - TTS enabled/disable should be persisted in local storage
 - Send button should be disable when input is empty
+- in web adapter /end should clear history
+
+- Implement now button changes to "Starting" how does this work for other ask questions?

@@ -155,6 +155,14 @@
 - Graceful handling of corrupt, missing, or stale session files — logs a warning and starts fresh
 - No adapter changes needed: persisted sessions are loaded into the Map at construction time, so `get()` finds them transparently
 
+## 30. Styled command pills + status line in web adapter
+
+- Slash commands (`/claude`, `/end`, `/status`, `/clear`) now render as small muted pill-shaped bubbles instead of full user chat bubbles
+- Added persistent status line in topbar showing active plugin + shortened workdir (e.g. `Claude Code ~/data/jake-bot`)
+- Commands no longer create a "Working..." bot placeholder; system messages suppressed for explicit commands (kept for auto-start and errors)
+- New `"command"` history role persists and restores correctly from localStorage
+- Backend system SSE events (`started`, `restored`, `clear`) now include `workdir` field
+
 ## 29. Fix orphaned "Working..." bubble for slash commands in web adapter
 
 - Slash/voice commands (e.g. `/claude`, `/end`, `/status`) no longer leave a `div.msg.bot` "Working..." placeholder in the transcript

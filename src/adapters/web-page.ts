@@ -57,6 +57,21 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   #transcript::-webkit-scrollbar-track { background: transparent; }
   #transcript::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
 
+  /* Status bar (between transcript and input) */
+  #statusbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 16px; background: #131313;
+    border-top: 1px solid #2a2a2a;
+    font-size: 12px; color: #666; flex-shrink: 0; min-height: 26px;
+  }
+  #statusbar .left { display: flex; align-items: center; gap: 6px; }
+  #statusbar .right { display: flex; align-items: center; gap: 8px; }
+  #statusbar .workdir {
+    color: #777; font-size: 12px;
+    max-width: 300px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+
   .msg {
     max-width: 85%; padding: 8px 12px; border-radius: 4px;
     white-space: pre-wrap; word-break: break-word; font-size: 13px; line-height: 1.6;
@@ -71,6 +86,12 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   .msg.system {
     align-self: center; background: transparent; color: #666;
     font-size: 12px; font-style: italic; padding: 4px 0;
+  }
+  .msg.command {
+    align-self: flex-end; background: transparent; color: #666;
+    font-size: 11px; padding: 3px 10px;
+    border: 1px solid #333; border-radius: 12px;
+    max-width: fit-content; white-space: nowrap;
   }
   /* Markdown elements */
   .msg.bot code {
@@ -113,11 +134,11 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     padding: 5px 12px; border-radius: 4px; cursor: pointer;
     font-family: inherit; font-size: 12px; transition: all 0.15s;
   }
-  .msg.bot .ir-opt-btn:hover { background: #243a24; border-color: #7cc795; }
-  .msg.bot .ir-opt-btn.selected {
-    background: #2a4a2a; border-color: #5fad78; color: #fff;
+  .msg.bot .ir-opt-btn:hover:not(:disabled) { background: #243a24; border-color: #7cc795; }
+  .msg.bot .ir-opt-btn:disabled { opacity: 0.4; cursor: default; }
+  .msg.bot .ir-opt-btn.selected:disabled {
+    opacity: 1; background: #1a2a1a; border-color: #3a7a4a; color: #3a7a4a;
   }
-  .msg.bot .ir-opt-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .msg.bot .mode-plan {
     color: #c79753; font-size: 11px; background: #1c1810;
     border-radius: 3px; padding: 4px 8px; margin: 6px 0;
@@ -202,7 +223,6 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   <div class="left">
     <div class="dot" id="connDot"></div>
     <span class="conn-label" id="connLabel">connecting</span>
-    <div id="working"><div class="spinner"></div><span>working...</span></div>
   </div>
   <div class="right">
     <button id="ttsToggle" class="active">TTS</button>
@@ -211,6 +231,15 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
 </div>
 
 <div id="transcript"></div>
+
+<div id="statusbar">
+  <div class="left">
+    <div id="working"><div class="spinner"></div><span>working...</span></div>
+  </div>
+  <div class="right">
+    <span class="workdir" id="workdirLabel">ready</span>
+  </div>
+</div>
 
 <div id="bottombar">
   <div id="preview"></div>
@@ -271,6 +300,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   const connDot = document.getElementById("connDot");
   const connLabel = document.getElementById("connLabel");
   const pluginLabel = document.getElementById("pluginLabel");
+  const workdirLabel = document.getElementById("workdirLabel");
   const textfield = document.getElementById("textfield");
   const textform = document.getElementById("textform");
   const ttsToggle = document.getElementById("ttsToggle");
@@ -281,6 +311,13 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   let busy = false;
   let speaking = false;
   let ttsEnabled = localStorage.getItem("jakebot_tts") !== "off";
+  let lastSendWasCommand = false;
+  const COMMAND_RE = /^\\/(claude|gemini|codex|end|status|clear)(\\s|$)/i;
+
+  function shortenPath(p) {
+    if (!p) return "";
+    return p.replace(/^\\/(?:Users|home)\\/[^/]+\\//, "~/");
+  }
 
   // Response accumulator — all events for a single response render in one bubble
   let currentResponseEl = null;
@@ -307,6 +344,11 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       } else if (entry.role === "system") {
         const el = document.createElement("div");
         el.className = "msg system";
+        el.textContent = entry.text;
+        transcript.appendChild(el);
+      } else if (entry.role === "command") {
+        const el = document.createElement("div");
+        el.className = "msg command";
         el.textContent = entry.text;
         transcript.appendChild(el);
       }
@@ -360,24 +402,36 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       }
       if (data.type === "started") {
         pluginLabel.textContent = data.plugin || "active";
-        addSystemMessage("Started " + (data.plugin || "") + " conversation.");
+        workdirLabel.textContent = shortenPath(data.workdir || "");
+        // Only show system message for auto-start (not explicit /commands)
+        if (!lastSendWasCommand) {
+          addSystemMessage("Started " + (data.plugin || "") + " conversation.");
+        }
+        lastSendWasCommand = false;
         setBusy(false);
       }
       if (data.type === "ended") {
         pluginLabel.textContent = "no conversation";
-        addSystemMessage("Conversation ended.");
+        workdirLabel.textContent = "ready";
+        if (!lastSendWasCommand) {
+          addSystemMessage("Conversation ended.");
+        }
+        lastSendWasCommand = false;
         setBusy(false);
       }
       if (data.type === "status") {
         addSystemMessage("Plugin: " + data.plugin + " | Workdir: " + data.workdir + " | Session: " + data.sessionId);
+        lastSendWasCommand = false;
         setBusy(false);
       }
       if (data.type === "error") {
         addSystemMessage("Error: " + (data.message || "Unknown error"));
+        lastSendWasCommand = false;
         setBusy(false);
       }
       if (data.type === "restored") {
         pluginLabel.textContent = data.plugin || "active";
+        workdirLabel.textContent = shortenPath(data.workdir || "");
         setBusy(false);
       }
     });
@@ -614,26 +668,43 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     saveHistory();
   }
 
+  function addCommandMessage(text) {
+    const el = document.createElement("div");
+    el.className = "msg command";
+    el.textContent = text;
+    transcript.appendChild(el);
+    scrollDown();
+    history.push({ role: "command", text, ts: Date.now() });
+    saveHistory();
+  }
+
   // -- Send message --
   async function send(text) {
     if (!text.trim() || busy) return;
-    addUserMessage(text.trim());
-    setBusy(true);
+    const trimmed = text.trim();
+    const isCommand = COMMAND_RE.test(trimmed);
+    lastSendWasCommand = isCommand;
 
-    // Create response bubble with placeholder as visual feedback
-    currentResponseEl = document.createElement("div");
-    currentResponseEl.className = "msg bot";
-    currentResponseEl.innerHTML = '<span class="thinking">Working...</span>';
-    transcript.appendChild(currentResponseEl);
-    responseParts = new Map();
-    responseOrder = [];
-    scrollDown();
+    if (isCommand) {
+      addCommandMessage(trimmed);
+    } else {
+      addUserMessage(trimmed);
+      // Create response bubble with placeholder as visual feedback
+      currentResponseEl = document.createElement("div");
+      currentResponseEl.className = "msg bot";
+      currentResponseEl.innerHTML = '<span class="thinking">Working...</span>';
+      transcript.appendChild(currentResponseEl);
+      responseParts = new Map();
+      responseOrder = [];
+      scrollDown();
+    }
+    setBusy(true);
 
     try {
       const res = await fetch("/api/message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session, text: text.trim() }),
+        body: JSON.stringify({ session, text: trimmed }),
       });
       if (res.status === 409) {
         addSystemMessage("Still processing, please wait...");
