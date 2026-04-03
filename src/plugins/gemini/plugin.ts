@@ -46,6 +46,12 @@ export class GeminiPlugin implements CliPlugin {
       );
       yield* parser.finish(code ?? 1);
     } finally {
+      // Kill the child process if it's still running (e.g. generator aborted
+      // early because the user sent another command). Without this, orphaned
+      // Gemini CLI processes accumulate consuming CPU and memory.
+      if (!child.killed) {
+        child.kill();
+      }
       await launch.cleanup?.();
     }
   }

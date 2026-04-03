@@ -270,6 +270,15 @@
 - Applied to both `start()` and `resume()` — covers all adapters (Discord, Web) uniformly
 - Previously, `/claude` with no `workdir` silently defaulted to `homedir()`, giving the AI access to the entire home directory
 
+## 45. Fix 6 architecture bugs found by 3-model code review
+
+- **StreamCoordinator split corruption:** Recalculate `renderStart` offsets for all open blocks after `split()` so streaming text isn't garbled when responses exceed the platform char limit; also fix latent `stopTyping?.().catch()` TypeError for platforms without `stopTyping`
+- **Discord concurrency guard:** Added `busy` Set to `DiscordAdapter` — rejects follow-up messages while a route is in progress for the same (user, channel), preventing interleaved `send()`/`edit()` calls
+- **Gemini orphaned processes:** Kill the spawned child process in the `finally` block of `GeminiPlugin.execute()` so early generator abort doesn't leak Gemini CLI processes
+- **Block ID collisions:** Replaced module-level `blockSeq` counters in Claude and Codex event mappers with per-invocation factories (`createClaudeMapper`, `createCodexMapper`) — eliminates cross-invocation ID conflicts
+- **Gemini MCP config race:** Added reference-counted `activeLeases` map so concurrent Gemini invocations sharing the same git root don't clobber each other's `.gemini/settings.json`; only the last finisher restores the original file
+- **MCP server leak:** Process manager now creates a single `McpServer` instance at startup instead of one per POST request, preventing resource accumulation over long runtimes
+
 ## 44. Fix double error message and session loss on bad arguments
 
 - Web adapter's `startConversation` called `conversations.end()` before `start()` — if `start()` threw (e.g. bad workdir), the existing session was already gone

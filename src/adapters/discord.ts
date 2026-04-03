@@ -29,6 +29,8 @@ export class DiscordAdapter implements BotAdapter {
   private readonly client: Client;
   private readonly platform: DiscordPlatform;
   private readonly router: Router;
+  /** Tracks (userId:channelId) keys with an active route in progress. */
+  private readonly busy = new Set<string>();
 
   constructor(
     private readonly config: BotConfig,
@@ -159,6 +161,13 @@ export class DiscordAdapter implements BotAdapter {
       const convo = this.conversations.get(message.author.id, message.channelId);
       if (!convo) return;
 
+      const busyKey = `${message.author.id}:${message.channelId}`;
+      if (this.busy.has(busyKey)) {
+        await message.reply("⏳ Still working on your previous message. Please wait.").catch(() => {});
+        return;
+      }
+
+      this.busy.add(busyKey);
       try {
         await this.router.route(message.author.id, message.channelId, message.content);
       } catch (err) {
@@ -168,6 +177,8 @@ export class DiscordAdapter implements BotAdapter {
           text: `\u274C Error: ${errMsg}`,
           parseMode: "plain",
         });
+      } finally {
+        this.busy.delete(busyKey);
       }
     });
 

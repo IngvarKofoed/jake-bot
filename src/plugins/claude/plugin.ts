@@ -1,7 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { CliPlugin, ExecuteInput, PluginContext, ConversationInfo } from "../types.js";
 import type { BotEvent } from "../../stream/events.js";
-import { mapClaudeMessage } from "./event-mapper.js";
+import { createClaudeMapper } from "./event-mapper.js";
 import { log } from "../../core/logger.js";
 
 export class ClaudePlugin implements CliPlugin {
@@ -33,8 +33,10 @@ export class ClaudePlugin implements CliPlugin {
       mcpServers,
     };
 
+    const mapMessage = createClaudeMapper("claude");
+
     for await (const msg of query({ prompt: input.message, options })) {
-      yield* mapClaudeMessage(msg as Parameters<typeof mapClaudeMessage>[0], "claude");
+      yield* mapMessage(msg as Parameters<typeof mapMessage>[0]);
     }
   }
 

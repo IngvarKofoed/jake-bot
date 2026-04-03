@@ -12,6 +12,10 @@ import { log } from "../core/logger.js";
 const port = parseInt(process.env.PROCESS_MANAGER_PORT ?? String(DEFAULT_PORT), 10);
 const supervisor = new ProcessSupervisor();
 
+// Single MCP server instance reused across all requests — avoids creating
+// (and leaking) a new McpServer + transport per POST.
+const mcpServer = createProcessManagerMcp(supervisor);
+
 const httpServer = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://localhost:${port}`);
 
@@ -21,7 +25,6 @@ const httpServer = createServer(async (req, res) => {
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
     });
-    const mcpServer = createProcessManagerMcp(supervisor);
     await mcpServer.connect(transport);
     await transport.handleRequest(req, res);
     return;

@@ -39,87 +39,90 @@ interface ResultMessage {
 type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock;
 type SdkMessage = AssistantMessage | ResultMessage | { type?: string };
 
-let blockSeq = 0;
-const nextId = () => `b${blockSeq++}`;
+/**
+ * Create a per-invocation Claude message mapper with its own block ID counter.
+ * Call once per `execute()` invocation to avoid cross-invocation ID collisions.
+ */
+export function createClaudeMapper(pluginId: "claude") {
+  let blockSeq = 0;
+  const nextId = () => `claude_b${blockSeq++}`;
 
-export function* mapClaudeMessage(
-  msg: SdkMessage,
-  pluginId: "claude",
-): Generator<BotEvent> {
-  const ts = Date.now();
+  return function* mapClaudeMessage(msg: SdkMessage): Generator<BotEvent> {
+    const ts = Date.now();
 
-  const content = extractContent(msg);
-  if (content) {
-    for (const block of content) {
-      if (block.type === "text") {
-        const id = nextId();
-        yield { type: "block_open", pluginId, ts, block: { id, kind: "text" } };
-        yield { type: "block_delta", pluginId, ts, blockId: id, delta: (block as TextBlock).text };
-        yield { type: "block_close", pluginId, ts, blockId: id };
-      }
+    const content = extractContent(msg);
+    if (content) {
+      for (const block of content) {
+        if (block.type === "text") {
+          const id = nextId();
+          yield { type: "block_open", pluginId, ts, block: { id, kind: "text" } };
+          yield { type: "block_delta", pluginId, ts, blockId: id, delta: (block as TextBlock).text };
+          yield { type: "block_close", pluginId, ts, blockId: id };
+        }
 
-      if (block.type === "thinking") {
-        const id = nextId();
-        yield { type: "block_open", pluginId, ts, block: { id, kind: "thinking" } };
-        yield {
-          type: "block_delta",
-          pluginId,
-          ts,
-          blockId: id,
-          delta: (block as ThinkingBlock).thinking,
-        };
-        yield { type: "block_close", pluginId, ts, blockId: id };
-      }
+        if (block.type === "thinking") {
+          const id = nextId();
+          yield { type: "block_open", pluginId, ts, block: { id, kind: "thinking" } };
+          yield {
+            type: "block_delta",
+            pluginId,
+            ts,
+            blockId: id,
+            delta: (block as ThinkingBlock).thinking,
+          };
+          yield { type: "block_close", pluginId, ts, blockId: id };
+        }
 
-      if (block.type === "tool_use") {
-        const tu = block as ToolUseBlock;
-        const mapped = mapSpecialTool(tu, pluginId, ts);
-        if (mapped) {
-          for (const ev of mapped) yield ev;
-        } else {
+        if (block.type === "tool_use") {
+          const tu = block as ToolUseBlock;
+          const mapped = mapSpecialTool(tu, pluginId, ts, nextId);
+          if (mapped) {
+            for (const ev of mapped) yield ev;
+          } else {
+            yield {
+              type: "block_emit",
+              pluginId,
+              ts,
+              block: {
+                id: nextId(),
+                kind: "tool_use",
+                toolName: cleanToolName(tu.name),
+                toolId: tu.id,
+                input: tu.input,
+              },
+            };
+          }
+        }
+
+        if (block.type === "tool_result") {
+          const tr = block as ToolResultBlock;
           yield {
             type: "block_emit",
             pluginId,
             ts,
             block: {
               id: nextId(),
-              kind: "tool_use",
-              toolName: cleanToolName(tu.name),
-              toolId: tu.id,
-              input: tu.input,
+              kind: "tool_result",
+              toolUseId: tr.tool_use_id,
+              isError: tr.is_error ?? false,
+              content: normalizeToolResultContent(tr.content),
             },
           };
         }
       }
-
-      if (block.type === "tool_result") {
-        const tr = block as ToolResultBlock;
-        yield {
-          type: "block_emit",
-          pluginId,
-          ts,
-          block: {
-            id: nextId(),
-            kind: "tool_result",
-            toolUseId: tr.tool_use_id,
-            isError: tr.is_error ?? false,
-            content: normalizeToolResultContent(tr.content),
-          },
-        };
-      }
     }
-  }
 
-  if (isResultMessage(msg)) {
-    yield {
-      type: "complete",
-      pluginId,
-      ts,
-      sessionId: msg.session_id,
-      costUsd: msg.total_cost_usd,
-      durationMs: msg.duration_ms,
-    };
-  }
+    if (isResultMessage(msg)) {
+      yield {
+        type: "complete",
+        pluginId,
+        ts,
+        sessionId: msg.session_id,
+        costUsd: msg.total_cost_usd,
+        durationMs: msg.duration_ms,
+      };
+    }
+  };
 }
 
 /**
@@ -131,6 +134,7 @@ function mapSpecialTool(
   tu: ToolUseBlock,
   pluginId: "claude",
   ts: number,
+  nextId: () => string,
 ): (InputRequestEvent | ModeChangeEvent)[] | undefined {
   if (tu.name === "AskUserQuestion") {
     return extractAllQuestions(tu.input).map((q) => ({

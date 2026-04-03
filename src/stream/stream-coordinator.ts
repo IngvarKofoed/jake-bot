@@ -72,6 +72,24 @@ export class StreamCoordinator {
         await flush(true);
         msg = undefined;
         buffer = fence ? `${fence}\n${overflow}` : overflow;
+
+        // After split, all open blocks' renderStart offsets pointed into the
+        // old (pre-split) buffer. Recalculate: any block whose renderStart
+        // was beyond the split point now starts at 0 (its rendered content
+        // was carried into the overflow). Blocks entirely before the split
+        // were already flushed and their content is gone.
+        for (const ob of openBlocks.values()) {
+          // The block's rendered content was re-appended by the overflow,
+          // so its new start is wherever it landed in the new buffer.
+          // Since we're in a streaming block, the last render occupies
+          // buffer[renderStart..end]. After split, the new buffer IS the
+          // overflow — so the block starts at 0 (only one block streams
+          // at a time). For safety with multiple concurrent open blocks,
+          // search for the rendered content.
+          const rendered = this.renderer.renderStreaming(ob.kind, ob.content);
+          const idx = buffer.lastIndexOf(rendered);
+          ob.renderStart = idx >= 0 ? idx : buffer.length;
+        }
       }
     };
 
@@ -102,7 +120,7 @@ export class StreamCoordinator {
       if (typingTimer !== undefined) {
         clearInterval(typingTimer);
         typingTimer = undefined;
-        await this.platform.stopTyping?.(channelId).catch(() => {});
+        await this.platform.stopTyping?.(channelId)?.catch(() => {});
       }
     };
     startTyping();

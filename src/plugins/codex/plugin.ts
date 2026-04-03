@@ -1,6 +1,6 @@
 import type { CliPlugin, ExecuteInput, PluginContext, ConversationInfo } from "../types.js";
 import type { BotEvent } from "../../stream/events.js";
-import { mapCodexEvent, type CodexSdkEvent } from "./event-mapper.js";
+import { createCodexMapper, type CodexSdkEvent } from "./event-mapper.js";
 import { log } from "../../core/logger.js";
 
 /** Codex SDK client interface (hypothetical -- adapt to actual SDK). */
@@ -25,12 +25,14 @@ export class CodexPlugin implements CliPlugin {
     input: ExecuteInput,
     _ctx: PluginContext,
   ): AsyncGenerator<BotEvent> {
+    const mapEvent = createCodexMapper();
+
     for await (const sdkEvent of this.client.runTurn({
       workdir: input.workdir,
       prompt: input.message,
       sessionId: input.sessionId,
     })) {
-      yield mapCodexEvent(sdkEvent);
+      yield mapEvent(sdkEvent);
     }
   }
 
