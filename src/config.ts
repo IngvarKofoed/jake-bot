@@ -23,6 +23,8 @@ export interface BotConfig {
   claudeMaxBudget: number;
   /** Gemini CLI binary path. */
   geminiBin: string;
+  /** Web adapter bind host (0.0.0.0 exposes on LAN). */
+  webHost: string;
   /** Web adapter HTTP port. */
   webPort: number;
   /** Default plugin for the web adapter (auto-starts if no active conversation). */
@@ -47,6 +49,7 @@ export function loadConfig(): BotConfig {
     claudeMaxTurns: parseInt(process.env.CLAUDE_MAX_TURNS ?? "30", 10),
     claudeMaxBudget: parseFloat(process.env.CLAUDE_MAX_BUDGET ?? "5.0"),
     geminiBin: process.env.GEMINI_BIN ?? "gemini",
+    webHost: process.env.WEB_HOST ?? "0.0.0.0",
     webPort: parseInt(process.env.WEB_PORT ?? "3000", 10),
     defaultPlugin: process.env.DEFAULT_PLUGIN ?? "claude",
     googleApiKey: process.env.GOOGLE_API_KEY,

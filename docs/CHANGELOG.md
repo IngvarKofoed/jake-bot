@@ -279,6 +279,11 @@
 - **Gemini MCP config race:** Added reference-counted `activeLeases` map so concurrent Gemini invocations sharing the same git root don't clobber each other's `.gemini/settings.json`; only the last finisher restores the original file
 - **MCP server leak:** Process manager now creates a single `McpServer` instance at startup instead of one per POST request, preventing resource accumulation over long runtimes
 
+## 46. Expose web adapter on local network
+
+- Added `webHost` config option (`WEB_HOST` env var, defaults to `0.0.0.0`) so the HTTP server binds to all interfaces instead of localhost-only
+- Updated `server.listen()` call, log message, and `.env.example`
+
 ## 44. Fix double error message and session loss on bad arguments
 
 - Web adapter's `startConversation` called `conversations.end()` before `start()` — if `start()` threw (e.g. bad workdir), the existing session was already gone

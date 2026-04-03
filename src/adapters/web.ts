@@ -57,8 +57,8 @@ export class WebAdapter implements BotAdapter {
 
   async start(): Promise<void> {
     const server = createServer((req, res) => this.handleRequest(req, res));
-    server.listen(this.config.webPort, () => {
-      log.info(TAG, `Web adapter listening on http://localhost:${this.config.webPort}`);
+    server.listen(this.config.webPort, this.config.webHost, () => {
+      log.info(TAG, `Web adapter listening on http://${this.config.webHost}:${this.config.webPort}`);
     });
   }
 
