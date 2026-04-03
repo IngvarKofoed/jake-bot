@@ -1,11 +1,5 @@
-- In planning mode, choises are made, these are not handled good in the web adapter. Remember speach if enabled and how to answer using voice?
-- Every event from the LLM is in its own box in the web adapter, I dont think this is needed
+
 - Hint should not be shown after first message has been typed
-- After a message have been sent, the conversation box should be shown indicating that it has been received
-- Move the Working... to the space above the input field and send button and below the chat window. 
-- Move "Claude Code" to the left, only show Disconnected/Connecting with starting CAPS to the right of "Claude Code". Actually, change "Claude Code" to "Jake". Then TTS should go to the right as it is now.
 - TTS enabled/disable should be persisted in local storage
 - Send button should be disable when input is empty
 - in web adapter /end should clear history
-
-- Implement now button changes to "Starting" how does this work for other ask questions?

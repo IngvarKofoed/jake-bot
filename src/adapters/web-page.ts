@@ -27,13 +27,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   }
   #topbar .left { display: flex; align-items: center; gap: 10px; }
   #topbar .right { display: flex; align-items: center; gap: 12px; }
-  #topbar .dot {
-    width: 7px; height: 7px; border-radius: 50%; background: #555;
-    flex-shrink: 0;
-  }
-  #topbar .dot.connected { background: #5fad78; }
-  #topbar .conn-label { color: #777; }
-  #topbar .plugin { color: #c79753; font-weight: 600; }
+  #topbar .app-name { color: #c79753; font-weight: 600; font-size: 14px; }
 
   /* Working indicator */
   #working {
@@ -61,16 +55,26 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   #statusbar {
     display: flex; align-items: center; justify-content: space-between;
     padding: 4px 16px; background: #131313;
-    border-top: 1px solid #2a2a2a;
+    border-top: 1px solid #2a2a2a; border-bottom: 1px solid #2a2a2a;
     font-size: 12px; color: #666; flex-shrink: 0; min-height: 26px;
   }
-  #statusbar .left { display: flex; align-items: center; gap: 6px; }
+  #statusbar .left { display: flex; align-items: center; gap: 8px; }
   #statusbar .right { display: flex; align-items: center; gap: 8px; }
+  #statusbar .plugin { color: #8a7043; font-weight: 600; }
+  #statusbar .hint { color: #555; font-style: italic; }
   #statusbar .workdir {
     color: #777; font-size: 12px;
     max-width: 300px; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap;
   }
+  #statusbar .disconnect-msg { display: none; color: #a05050; font-style: italic; }
+  #statusbar.disconnected {
+    justify-content: center;
+    border-top-color: #6b3333; border-bottom-color: #6b3333;
+  }
+  #statusbar.disconnected .left,
+  #statusbar.disconnected .right { display: none; }
+  #statusbar.disconnected .disconnect-msg { display: inline; }
 
   .msg {
     max-width: 85%; padding: 8px 12px; border-radius: 4px;
@@ -221,12 +225,10 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
 
 <div id="topbar">
   <div class="left">
-    <div class="dot" id="connDot"></div>
-    <span class="conn-label" id="connLabel">connecting</span>
+    <span class="app-name">Jake</span>
   </div>
   <div class="right">
     <button id="ttsToggle" class="active">TTS</button>
-    <span class="plugin" id="pluginLabel">no conversation</span>
   </div>
 </div>
 
@@ -234,11 +236,13 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
 
 <div id="statusbar">
   <div class="left">
-    <div id="working"><div class="spinner"></div><span>working...</span></div>
+    <span class="hint" id="pluginLabel">Type /claude to start</span>
+    <div id="working"><div class="spinner"></div></div>
   </div>
   <div class="right">
-    <span class="workdir" id="workdirLabel">ready</span>
+    <span class="workdir" id="workdirLabel"></span>
   </div>
+  <span class="disconnect-msg">Reconnecting...</span>
 </div>
 
 <div id="bottombar">
@@ -297,8 +301,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   const transcript = document.getElementById("transcript");
   const preview = document.getElementById("preview");
   const micBtn = document.getElementById("mic");
-  const connDot = document.getElementById("connDot");
-  const connLabel = document.getElementById("connLabel");
+  const statusbar = document.getElementById("statusbar");
   const pluginLabel = document.getElementById("pluginLabel");
   const workdirLabel = document.getElementById("workdirLabel");
   const textfield = document.getElementById("textfield");
@@ -317,6 +320,16 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   function shortenPath(p) {
     if (!p) return "";
     return p.replace(/^\\/(?:Users|home)\\/[^/]+\\//, "~/");
+  }
+
+  function setPluginLabel(name) {
+    if (name) {
+      pluginLabel.textContent = name;
+      pluginLabel.className = "plugin";
+    } else {
+      pluginLabel.textContent = "Type /claude to start";
+      pluginLabel.className = "hint";
+    }
   }
 
   // Response accumulator — all events for a single response render in one bubble
@@ -362,8 +375,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     sse = new EventSource("/api/stream?session=" + encodeURIComponent(session));
 
     sse.onopen = () => {
-      connDot.classList.add("connected");
-      connLabel.textContent = "connected";
+      statusbar.classList.remove("disconnected");
       // Reset busy state — if server restarted, in-flight work is lost
       setBusy(false);
       // Persist any partial response before clearing (done event never fired)
@@ -380,8 +392,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     };
 
     sse.onerror = () => {
-      connDot.classList.remove("connected");
-      connLabel.textContent = "reconnecting";
+      statusbar.classList.add("disconnected");
     };
 
     sse.addEventListener("event", (e) => {
@@ -395,13 +406,13 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       // discard the placeholder "Working..." bubble if it's still pending.
       discardPendingResponse();
       if (data.plugin) {
-        pluginLabel.textContent = data.plugin;
+        setPluginLabel(data.plugin);
       }
       if (data.type === "ready") {
         setBusy(false);
       }
       if (data.type === "started") {
-        pluginLabel.textContent = data.plugin || "active";
+        setPluginLabel(data.plugin || "active");
         workdirLabel.textContent = shortenPath(data.workdir || "");
         // Only show system message for auto-start (not explicit /commands)
         if (!lastSendWasCommand) {
@@ -411,8 +422,8 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
         setBusy(false);
       }
       if (data.type === "ended") {
-        pluginLabel.textContent = "no conversation";
-        workdirLabel.textContent = "ready";
+        setPluginLabel(null);
+        workdirLabel.textContent = "";
         if (!lastSendWasCommand) {
           addSystemMessage("Conversation ended.");
         }
@@ -430,7 +441,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
         setBusy(false);
       }
       if (data.type === "restored") {
-        pluginLabel.textContent = data.plugin || "active";
+        setPluginLabel(data.plugin || "active");
         workdirLabel.textContent = shortenPath(data.workdir || "");
         setBusy(false);
       }
