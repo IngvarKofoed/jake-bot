@@ -324,6 +324,23 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   let ttsEnabled = localStorage.getItem("jakebot_tts") !== "off";
   let lastSendWasCommand = false;
   const COMMAND_RE = /^\\/(claude|gemini|codex|end|status|clear)(\\s|$)/i;
+  let unreadCount = 0;
+  let tabVisible = !document.hidden;
+
+  function updateTitle() {
+    let title = "Jake";
+    if (busy) title = "Thinking...";
+    if (unreadCount > 0) title = "(" + unreadCount + ") " + title;
+    document.title = title;
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    tabVisible = !document.hidden;
+    if (tabVisible) {
+      unreadCount = 0;
+      updateTitle();
+    }
+  });
 
   function shortenPath(p) {
     if (!p) return "";
@@ -340,6 +357,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       pluginLabel.className = "hint";
       textfield.placeholder = "Type /claude workdir to start...";
     }
+    updateTitle();
   }
 
   // Response accumulator — all events for a single response render in one bubble
@@ -440,11 +458,11 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
         setBusy(false);
       }
       if (data.type === "ended") {
+        clearHistory();
+        transcript.innerHTML = "";
         setPluginLabel(null);
         workdirLabel.textContent = "";
-        if (!lastSendWasCommand) {
-          addSystemMessage("Conversation ended.");
-        }
+        addSystemMessage("Conversation ended.");
         lastSendWasCommand = false;
         setBusy(false);
       }
@@ -671,6 +689,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       // If nothing is playing (all chunks already finished), clean up
       if (!audioPlaying) { speaking = false; resumeRecognition(); }
     } else if (ev.type === "done") {
+      if (!tabVisible) unreadCount++;
       setBusy(false);
       // Persist the combined response as a single history entry
       const combinedText = responseOrder.map(id => responseParts.get(id)).join("\\n").trim();
@@ -766,6 +785,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     micBtn.classList.toggle("busy", b);
     working.classList.toggle("active", b);
     updateControls();
+    updateTitle();
   }
 
   function updateControls() {

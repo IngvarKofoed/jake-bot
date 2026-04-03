@@ -225,3 +225,12 @@
 - Input field, send button, and mic button all disabled when SSE connection is lost
 - Keyboard shortcut (Space for mic) also guarded by connected state
 - `send()` rejects calls when disconnected
+
+## 36. /end command clears conversation in web adapter
+
+- `/end` now clears transcript and localStorage history before showing "Conversation ended."
+
+## 37. Dynamic browser tab title in web adapter
+
+- Title shows `Thinking...` while the bot is working, `Jake` when idle
+- Unread counter `(3)` prefixed when responses arrive while the tab is backgrounded; resets on focus
