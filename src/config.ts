@@ -33,6 +33,8 @@ export interface BotConfig {
   googleApiKey: string | undefined;
   /** Path to the session persistence file (empty string disables persistence). */
   sessionsFile: string;
+  /** Discord user IDs allowed to interact with the bot (empty = allow all). */
+  discordAllowedUserIds: ReadonlySet<string>;
 }
 
 export function loadConfig(): BotConfig {
@@ -54,6 +56,9 @@ export function loadConfig(): BotConfig {
     defaultPlugin: process.env.DEFAULT_PLUGIN ?? "claude",
     googleApiKey: process.env.GOOGLE_API_KEY,
     sessionsFile: process.env.SESSIONS_FILE ?? join(homedir(), ".jake-bot", "sessions.json"),
+    discordAllowedUserIds: new Set(
+      (process.env.DISCORD_ALLOWED_USER_IDS ?? "").split(/[\s,]+/).filter(Boolean),
+    ),
   };
 }
 

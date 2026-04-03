@@ -284,6 +284,11 @@
 - Added `webHost` config option (`WEB_HOST` env var, defaults to `0.0.0.0`) so the HTTP server binds to all interfaces instead of localhost-only
 - Updated `server.listen()` call, log message, and `.env.example`
 
+## 47. Add DISCORD_ALLOWED_USER_IDS access control
+
+- Parse `DISCORD_ALLOWED_USER_IDS` env var (comma/space-separated) into `ReadonlySet<string>` on `BotConfig`; empty = allow all users
+- Guard `interactionCreate` with ephemeral rejection and `messageCreate` with silent ignore for unauthorized user IDs
+
 ## 44. Fix double error message and session loss on bad arguments
 
 - Web adapter's `startConversation` called `conversations.end()` before `start()` — if `start()` threw (e.g. bad workdir), the existing session was already gone

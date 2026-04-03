@@ -115,9 +115,22 @@ export class DiscordAdapter implements BotAdapter {
 
   // -- Event listeners --
 
+  private isUserAllowed(userId: string): boolean {
+    return this.config.discordAllowedUserIds.size === 0
+      || this.config.discordAllowedUserIds.has(userId);
+  }
+
   private registerEventListeners(): void {
     this.client.on("interactionCreate", async (interaction) => {
       if (!interaction.isChatInputCommand()) return;
+
+      if (!this.isUserAllowed(interaction.user.id)) {
+        await interaction.reply({
+          content: "You don't have permission to use this bot.",
+          ephemeral: true,
+        });
+        return;
+      }
 
       try {
         switch (interaction.commandName) {
@@ -158,6 +171,7 @@ export class DiscordAdapter implements BotAdapter {
     // Follow-up messages in active conversations
     this.client.on("messageCreate", async (message: Message) => {
       if (message.author.bot) return;
+      if (!this.isUserAllowed(message.author.id)) return;
       const convo = this.conversations.get(message.author.id, message.channelId);
       if (!convo) return;
 
