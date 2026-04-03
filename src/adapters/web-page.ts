@@ -572,25 +572,37 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
         i++; continue;
       }
 
-      // Unordered list items (collect consecutive)
+      // Unordered list items (collect consecutive, allowing blank lines between)
       if (/^[-*]\\s+/.test(line)) {
         prevKind = "other";
         const items = [];
-        while (i < lines.length && /^[-*]\\s+/.test(lines[i])) {
-          items.push('<li>' + inlineMd(lines[i].replace(/^[-*]\\s+/, '')) + '</li>');
-          i++;
+        while (i < lines.length) {
+          if (/^[-*]\\s+/.test(lines[i])) {
+            items.push('<li>' + inlineMd(lines[i].replace(/^[-*]\\s+/, '')) + '</li>');
+            i++;
+          } else if (lines[i].trim() === '' && i + 1 < lines.length && /^[-*]\\s+/.test(lines[i + 1])) {
+            i++; // skip blank line between list items
+          } else {
+            break;
+          }
         }
         out.push('<ul>' + items.join('') + '</ul>');
         continue;
       }
 
-      // Ordered list items (collect consecutive)
+      // Ordered list items (collect consecutive, allowing blank lines between)
       if (/^\\d+\\.\\s+/.test(line)) {
         prevKind = "other";
         const items = [];
-        while (i < lines.length && /^\\d+\\.\\s+/.test(lines[i])) {
-          items.push('<li>' + inlineMd(lines[i].replace(/^\\d+\\.\\s+/, '')) + '</li>');
-          i++;
+        while (i < lines.length) {
+          if (/^\\d+\\.\\s+/.test(lines[i])) {
+            items.push('<li>' + inlineMd(lines[i].replace(/^\\d+\\.\\s+/, '')) + '</li>');
+            i++;
+          } else if (lines[i].trim() === '' && i + 1 < lines.length && /^\\d+\\.\\s+/.test(lines[i + 1])) {
+            i++; // skip blank line between list items
+          } else {
+            break;
+          }
         }
         out.push('<ol>' + items.join('') + '</ol>');
         continue;

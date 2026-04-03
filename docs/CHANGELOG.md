@@ -213,3 +213,8 @@
 
 - Added `max-width: 900px` with `margin: 0 auto` to `body` so the layout centers and doesn't stretch edge-to-edge on wide monitors
 - Added subtle side borders (`#1e1e1e`) and a slightly lighter outer background (`#111111` on `html`) so the chat area feels inset
+
+## 34. Fix numbered lists all showing "1." in web adapter
+
+- `renderBotHtml()` list collection loop stopped at blank lines between items, creating separate `<ol>` per item (each starting at 1)
+- Now skips blank lines when the next non-blank line is another list item, keeping the entire list in a single `<ol>`/`<ul>`
