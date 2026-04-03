@@ -197,6 +197,26 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
 
   .no-speech #mic { display: none; }
 
+  /* Autocomplete dropdown */
+  #textinput { position: relative; }
+  #autocomplete {
+    display: none; position: absolute; bottom: 100%; left: 0; right: 0;
+    background: #1a1a1a; border: 1px solid #333; border-radius: 6px;
+    max-height: 240px; overflow-y: auto; z-index: 100;
+    margin-bottom: 4px; box-shadow: 0 -4px 12px rgba(0,0,0,0.4);
+  }
+  #autocomplete.visible { display: block; }
+  .ac-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; cursor: pointer; font-size: 13px;
+    border-bottom: 1px solid #222;
+  }
+  .ac-item:last-child { border-bottom: none; }
+  .ac-item:hover, .ac-item.selected { background: #252525; }
+  .ac-item .ac-icon { color: #555; font-size: 14px; width: 18px; text-align: center; flex-shrink: 0; }
+  .ac-item .ac-label { color: #c79753; font-weight: 600; white-space: nowrap; }
+  .ac-item .ac-desc { color: #666; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
   /* Text input */
   #textinput { flex: 1; }
   #textinput form { display: flex; gap: 8px; }
@@ -258,6 +278,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
     </button>
     <div id="textinput">
+      <div id="autocomplete"></div>
       <form id="textform">
         <input type="text" id="textfield" placeholder="Type /claude workdir to start..." autocomplete="off">
         <button type="submit" id="sendbtn" disabled>Send</button>
@@ -986,10 +1007,164 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     }
   });
 
+  // -- Autocomplete system --
+
+  const autocomplete = document.getElementById("autocomplete");
+  let acItems = [];
+  let acSelectedIdx = -1;
+  let acVisible = false;
+  let acTrigger = null;  // "slash" | "file" | null
+  let acFetchTimer = null;
+  const AC_DEBOUNCE = 150;
+
+  function escHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function showAutocomplete(items) {
+    acItems = items;
+    acSelectedIdx = items.length > 0 ? 0 : -1;
+    if (items.length === 0) { hideAutocomplete(); return; }
+
+    autocomplete.innerHTML = items.map(function(item, i) {
+      var icon = item.isDirectory ? "&#128193;" : (acTrigger === "slash" ? "&#47;" : "&#128196;");
+      return '<div class="ac-item' + (i === 0 ? ' selected' : '') + '" data-idx="' + i + '">'
+        + '<span class="ac-icon">' + icon + '</span>'
+        + '<span class="ac-label">' + escHtml(item.label) + '</span>'
+        + '<span class="ac-desc">' + escHtml(item.description || "") + '</span>'
+        + '</div>';
+    }).join("");
+
+    autocomplete.classList.add("visible");
+    acVisible = true;
+  }
+
+  function hideAutocomplete() {
+    autocomplete.classList.remove("visible");
+    acVisible = false;
+    acItems = [];
+    acSelectedIdx = -1;
+    acTrigger = null;
+  }
+
+  function selectAutocompleteItem(idx) {
+    if (idx < 0 || idx >= acItems.length) return;
+    var item = acItems[idx];
+
+    if (acTrigger === "file") {
+      // Replace only the @query portion at the end of input
+      var val = textfield.value;
+      var atMatch = val.match(/(?:^|\\s)(@[^\\s]*)$/);
+      if (atMatch) {
+        var beforeAt = val.slice(0, val.length - atMatch[1].length);
+        textfield.value = beforeAt + item.insertText;
+      } else {
+        textfield.value = item.insertText;
+      }
+    } else {
+      textfield.value = item.insertText;
+    }
+
+    textfield.focus();
+    hideAutocomplete();
+
+    // If a directory was selected, immediately trigger completions for next level
+    if (item.isDirectory) {
+      setTimeout(function() { handleAutocompleteInput(); }, 0);
+    }
+    updateControls();
+  }
+
+  function getAutocompleteTrigger() {
+    var val = textfield.value;
+
+    // Slash commands: entire input starts with /
+    if (val.startsWith("/") && !val.includes(" ")) {
+      return { trigger: "slash", query: val.slice(1) };
+    }
+
+    // File references: find @query at end of input
+    var atMatch = val.match(/(?:^|\\s)@([^\\s]*)$/);
+    if (atMatch) {
+      return { trigger: "file", query: atMatch[1] };
+    }
+
+    return null;
+  }
+
+  function handleAutocompleteInput() {
+    var info = getAutocompleteTrigger();
+    if (!info) { hideAutocomplete(); return; }
+
+    acTrigger = info.trigger;
+    clearTimeout(acFetchTimer);
+
+    var delay = info.trigger === "slash" ? 0 : AC_DEBOUNCE;
+    acFetchTimer = setTimeout(function() {
+      var url = "/api/completions?trigger=" + encodeURIComponent(info.trigger)
+        + "&query=" + encodeURIComponent(info.query)
+        + "&session=" + encodeURIComponent(session);
+      fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(items) { showAutocomplete(items); })
+        .catch(function() { hideAutocomplete(); });
+    }, delay);
+  }
+
+  function updateAcSelection() {
+    var items = autocomplete.querySelectorAll(".ac-item");
+    items.forEach(function(el, i) {
+      el.classList.toggle("selected", i === acSelectedIdx);
+      if (i === acSelectedIdx) el.scrollIntoView({ block: "nearest" });
+    });
+  }
+
+  // Wire input events
+  textfield.addEventListener("input", function() {
+    updateControls();
+    handleAutocompleteInput();
+  });
+
+  // Keyboard navigation for autocomplete
+  textfield.addEventListener("keydown", function(e) {
+    if (!acVisible) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      acSelectedIdx = Math.min(acSelectedIdx + 1, acItems.length - 1);
+      updateAcSelection();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      acSelectedIdx = Math.max(acSelectedIdx - 1, 0);
+      updateAcSelection();
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      if (acSelectedIdx >= 0) {
+        e.preventDefault();
+        selectAutocompleteItem(acSelectedIdx);
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      hideAutocomplete();
+    }
+  });
+
+  // Click on autocomplete item
+  autocomplete.addEventListener("mousedown", function(e) {
+    e.preventDefault(); // Prevent blur from firing before click
+    var item = e.target.closest(".ac-item");
+    if (!item) return;
+    selectAutocompleteItem(parseInt(item.dataset.idx, 10));
+  });
+
+  // Hide autocomplete on blur (with delay for safety)
+  textfield.addEventListener("blur", function() {
+    setTimeout(function() { hideAutocomplete(); }, 200);
+  });
+
   // -- Text input --
-  textfield.addEventListener("input", updateControls);
   textform.addEventListener("submit", (e) => {
     e.preventDefault();
+    hideAutocomplete();
     const text = textfield.value;
     textfield.value = "";
     updateControls();

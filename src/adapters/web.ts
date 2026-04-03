@@ -9,9 +9,12 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { BotConfig } from "../config.js";
 import type { PluginRegistry } from "../core/plugin-registry.js";
 import type { ActiveConversations } from "../core/active-conversations.js";
+import type { CommandRegistry } from "../core/command-registry.js";
 import { Router } from "../core/router.js";
 import { WebPlatform, type WebPlatformEvent } from "../platform/web.js";
 import { WebRenderer } from "../rendering/web-renderer.js";
+import { listFiles } from "../core/file-listing.js";
+import { expandFileReferences } from "../core/file-references.js";
 import type { PluginContext } from "../plugins/types.js";
 import type { BotAdapter } from "./types.js";
 import { WEB_PAGE_HTML } from "./web-page.js";
@@ -45,6 +48,7 @@ export class WebAdapter implements BotAdapter {
     private readonly plugins: PluginRegistry,
     private readonly conversations: ActiveConversations,
     private readonly ctx: PluginContext,
+    private readonly commandRegistry: CommandRegistry,
   ) {
     this.platform = new WebPlatform();
     const renderer = new WebRenderer();
@@ -79,6 +83,11 @@ export class WebAdapter implements BotAdapter {
 
     if (req.method === "POST" && url.pathname === "/api/tts") {
       this.handleTTS(req, res);
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/completions") {
+      this.handleCompletions(url, res);
       return;
     }
 
@@ -275,13 +284,27 @@ export class WebAdapter implements BotAdapter {
       }
     }
 
+    // Expand @file references before routing
+    const convo = this.conversations.get(userId, cid);
+    let messageToRoute = trimmed;
+    if (convo) {
+      const expanded = await expandFileReferences(trimmed, convo.workdir);
+      if (expanded.failedPaths.length > 0) {
+        this.emitSystem(cid, {
+          type: "warning",
+          message: `Could not read: ${expanded.failedPaths.join(", ")}`,
+        });
+      }
+      messageToRoute = expanded.expandedMessage;
+    }
+
     // Route to active conversation
     this.busy.add(cid);
     res.writeHead(202, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
 
     try {
-      await this.router.route(userId, cid, trimmed);
+      await this.router.route(userId, cid, messageToRoute);
     } catch (err) {
       log.error(TAG, `Route error: ${err instanceof Error ? err.message : String(err)}`);
       this.emitSystem(cid, { type: "error", message: err instanceof Error ? err.message : String(err) });
@@ -373,6 +396,76 @@ export class WebAdapter implements BotAdapter {
       log.error(TAG, `TTS error: ${err instanceof Error ? err.message : String(err)}`);
       const emitter = this.platform.subscribe(cid);
       emitter.emit("event", { type: "audio_done" } as WebPlatformEvent);
+    }
+  }
+
+  // -- Completions endpoint --
+
+  private handleCompletions(url: URL, res: ServerResponse): void {
+    const trigger = url.searchParams.get("trigger");
+    const query = url.searchParams.get("query") ?? "";
+    const session = url.searchParams.get("session") ?? "";
+
+    res.setHeader("Content-Type", "application/json");
+
+    if (trigger === "slash") {
+      const matches = this.commandRegistry.match(query);
+      const items = matches.map((cmd) => ({
+        label: `/${cmd.name}`,
+        description: cmd.description,
+        insertText: `/${cmd.name}`,
+        category: cmd.category,
+      }));
+      res.writeHead(200).end(JSON.stringify(items));
+      return;
+    }
+
+    if (trigger === "file") {
+      void this.handleFileCompletions(session, query, res);
+      return;
+    }
+
+    res.writeHead(400).end(JSON.stringify({ error: "Invalid trigger" }));
+  }
+
+  private async handleFileCompletions(
+    session: string,
+    query: string,
+    res: ServerResponse,
+  ): Promise<void> {
+    const cid = channelId(session);
+    const userId = `web:${session}`;
+    const convo = this.conversations.get(userId, cid);
+
+    if (!convo) {
+      res.writeHead(200).end(JSON.stringify([]));
+      return;
+    }
+
+    // Split query into directory prefix and filename filter
+    const lastSlash = query.lastIndexOf("/");
+    const subdir = lastSlash >= 0 ? query.slice(0, lastSlash) : "";
+    const fileQuery = lastSlash >= 0 ? query.slice(lastSlash + 1) : query;
+
+    try {
+      const entries = await listFiles({
+        workdir: convo.workdir,
+        subdir,
+        query: fileQuery,
+        limit: 30,
+      });
+
+      const items = entries.map((entry) => ({
+        label: entry.path,
+        description: entry.isDirectory ? "Directory" : "File",
+        insertText: `@${entry.path}${entry.isDirectory ? "/" : " "}`,
+        isDirectory: entry.isDirectory,
+      }));
+
+      res.writeHead(200).end(JSON.stringify(items));
+    } catch (err) {
+      log.error(TAG, `File completions error: ${err instanceof Error ? err.message : String(err)}`);
+      res.writeHead(200).end(JSON.stringify([]));
     }
   }
 

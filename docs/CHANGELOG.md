@@ -245,3 +245,12 @@
 - `mapSpecialTool` now returns an array of events (one per question)
 - Deduplicate `responseOrder` to prevent repeated message IDs from duplicating rendered content
 - Clicking any option button now disables ALL option buttons in the bot bubble, not just the same question's
+
+## 40. Filtered command suggestions and @file references
+
+- New `src/core/command-registry.ts`: platform-agnostic command registry with `match(query)` prefix filtering; `registerStandardCommands()` defines the 6 shared commands
+- New `src/core/file-listing.ts`: single-level directory listing with ignore patterns (`.git`, `node_modules`, etc.) and path traversal guard
+- New `src/core/file-references.ts`: parses `@path` tokens from messages and expands them inline as `<file>` XML tags before routing to plugins — no `ExecuteInput`/`Router`/plugin changes needed
+- Web adapter: new `GET /api/completions` endpoint for slash-command and file completions; `@file` expansion in `processMessage()` before `router.route()`
+- Web frontend: autocomplete dropdown above input field triggered by `/` (commands) or `@` (files); keyboard navigation (arrows, Enter/Tab, Escape), click selection, directory drill-down, debounced file fetches
+- Discord adapter: `buildSlashCommandsJSON()` now derives shared commands from the registry (DRY), keeping Discord-only commands (`/conversations`, `/resume`) local

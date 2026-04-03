@@ -17,6 +17,7 @@ import {
 import type { BotConfig } from "../config.js";
 import type { PluginRegistry } from "../core/plugin-registry.js";
 import type { ActiveConversations } from "../core/active-conversations.js";
+import type { CommandRegistry } from "../core/command-registry.js";
 import { Router } from "../core/router.js";
 import { DiscordPlatform } from "../platform/discord.js";
 import { DiscordRenderer } from "../rendering/discord-renderer.js";
@@ -34,6 +35,7 @@ export class DiscordAdapter implements BotAdapter {
     private readonly plugins: PluginRegistry,
     private readonly conversations: ActiveConversations,
     ctx: PluginContext,
+    private readonly commandRegistry: CommandRegistry,
   ) {
     this.client = new Client({
       intents: [
@@ -58,46 +60,28 @@ export class DiscordAdapter implements BotAdapter {
     await this.client.login(this.config.discordToken);
   }
 
-  // -- Slash command definitions --
+  // -- Slash command definitions (derived from shared registry + Discord-only) --
 
-  private get commands() {
-    return [
-      new SlashCommandBuilder()
-        .setName("claude")
-        .setDescription("Start a Claude Code conversation")
-        .addStringOption((o) =>
-          o.setName("workdir").setDescription("Working directory"),
-        ),
+  private buildSlashCommandsJSON(): unknown[] {
+    // Shared commands from the registry
+    const shared = this.commandRegistry.all().map((cmd) => {
+      const b = new SlashCommandBuilder()
+        .setName(cmd.name)
+        .setDescription(cmd.description);
+      for (const opt of cmd.options) {
+        b.addStringOption((o) =>
+          o.setName(opt.name).setDescription(opt.description).setRequired(opt.required),
+        );
+      }
+      return b.toJSON();
+    });
 
-      new SlashCommandBuilder()
-        .setName("gemini")
-        .setDescription("Start a Gemini conversation")
-        .addStringOption((o) =>
-          o.setName("workdir").setDescription("Working directory"),
-        ),
-
-      new SlashCommandBuilder()
-        .setName("codex")
-        .setDescription("Start a Codex conversation")
-        .addStringOption((o) =>
-          o.setName("workdir").setDescription("Working directory"),
-        ),
-
-      new SlashCommandBuilder()
-        .setName("end")
-        .setDescription("End the current conversation"),
-
-      new SlashCommandBuilder()
-        .setName("clear")
-        .setDescription("Reset context — starts a fresh session (same plugin & workdir)"),
-
-      new SlashCommandBuilder()
-        .setName("status")
-        .setDescription("Show current conversation status"),
-
+    // Discord-only commands (not in the shared registry)
+    const discordOnly = [
       new SlashCommandBuilder()
         .setName("conversations")
-        .setDescription("List all active conversations"),
+        .setDescription("List all active conversations")
+        .toJSON(),
 
       new SlashCommandBuilder()
         .setName("resume")
@@ -110,8 +94,11 @@ export class DiscordAdapter implements BotAdapter {
         )
         .addStringOption((o) =>
           o.setName("workdir").setDescription("Working directory"),
-        ),
+        )
+        .toJSON(),
     ];
+
+    return [...shared, ...discordOnly];
   }
 
   // -- Register slash commands on startup --
@@ -119,7 +106,7 @@ export class DiscordAdapter implements BotAdapter {
   private async registerCommands(): Promise<void> {
     const rest = new REST({ version: "10" }).setToken(this.config.discordToken!);
     await rest.put(Routes.applicationCommands(this.config.discordAppId!), {
-      body: this.commands.map((c) => c.toJSON()),
+      body: this.buildSlashCommandsJSON(),
     });
     log.info("bot", "Slash commands registered");
   }
