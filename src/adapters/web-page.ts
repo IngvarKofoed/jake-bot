@@ -149,6 +149,33 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   .msg.bot .ir-opt-btn.selected:disabled {
     opacity: 1; background: #1a2a1a; border-color: #3a7a4a; color: #3a7a4a;
   }
+  /* Wizard: multi-question step container */
+  .msg.bot .ir-wizard {
+    margin: 8px 0; border: 1px solid #2a2a2a; border-radius: 4px;
+    background: #111; overflow: hidden;
+  }
+  .msg.bot .ir-wizard .ir-step-counter {
+    padding: 6px 10px; font-size: 11px; color: #666;
+    border-bottom: 1px solid #2a2a2a; background: #0e0e0e;
+  }
+  .msg.bot .ir-wizard .ir-step-counter .ir-step-current {
+    color: #c79753; font-weight: 600;
+  }
+  .msg.bot .ir-wizard .ir-step {
+    padding: 8px 10px; border-bottom: 1px solid #1e1e1e;
+    transition: opacity 0.2s;
+  }
+  .msg.bot .ir-wizard .ir-step:last-child { border-bottom: none; }
+  .msg.bot .ir-wizard .ir-step.answered { opacity: 0.5; }
+  .msg.bot .ir-wizard .ir-step.answered .ir-options { display: none; }
+  .msg.bot .ir-wizard .ir-step .ir-answer-label {
+    display: none; color: #5fad78; font-size: 12px; margin-top: 4px;
+  }
+  .msg.bot .ir-wizard .ir-step.answered .ir-answer-label { display: inline-block; }
+  .msg.bot .ir-wizard .ir-step.future { display: none; }
+  /* Hide input-request buttons while response is still streaming */
+  .msg.bot.streaming .input-request,
+  .msg.bot.streaming .ir-wizard { display: none; }
   .msg.bot .mode-plan {
     color: #c79753; font-size: 11px; background: #1c1810;
     border-radius: 3px; padding: 4px 8px; margin: 6px 0;
@@ -405,6 +432,8 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
         const el = document.createElement("div");
         el.className = "msg bot";
         el.innerHTML = renderBotHtml(entry.text);
+        // Disable input-request buttons from history (answers already submitted)
+        for (const b of el.querySelectorAll(".ir-opt-btn")) b.disabled = true;
         transcript.appendChild(el);
       } else if (entry.role === "system") {
         const el = document.createElement("div");
@@ -529,6 +558,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     const text = raw || "";
     const lines = text.split("\\n");
     const out = [];
+    const irOut = []; // input_request HTML — rendered last so buttons sit at bottom
     let i = 0;
     let prevKind = "other"; // track "tool" vs "other" for spacing
 
@@ -567,33 +597,66 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
         i++; continue;
       }
 
-      // Input request (question with options)
+      // Input request (question with options) — possibly grouped as wizard
       if (line.startsWith("[input_request] ")) {
         prevKind = "other";
-        const raw = line.slice(16);
-        // Options JSON follows the question text after the first [ character
-        const jsonStart = raw.indexOf("[");
-        let question, opts;
-        if (jsonStart >= 0) {
-          question = raw.slice(0, jsonStart).trim();
-          try { opts = JSON.parse(raw.slice(jsonStart)); } catch { opts = []; }
-        } else {
-          question = raw.trim();
-          opts = [];
+        // Collect all consecutive [input_request] lines
+        const irGroup = [];
+        while (i < lines.length && lines[i].startsWith("[input_request] ")) {
+          const irRaw = lines[i].slice(16);
+          const irJsonStart = irRaw.indexOf("[");
+          let irQuestion, irOpts;
+          if (irJsonStart >= 0) {
+            irQuestion = irRaw.slice(0, irJsonStart).trim();
+            try { irOpts = JSON.parse(irRaw.slice(irJsonStart)); } catch { irOpts = []; }
+          } else {
+            irQuestion = irRaw.trim();
+            irOpts = [];
+          }
+          irGroup.push({ question: irQuestion, opts: irOpts });
+          i++;
         }
-        let html = '<div class="input-request"><div class="ir-question">' + inlineMd(question) + '</div>';
-        if (opts.length > 0) {
-          html += '<div class="ir-options">';
-          for (const o of opts) {
-            const lbl = esc(o.label || "");
-            const title = o.description ? ' title="' + esc(o.description) + '"' : "";
-            html += '<button class="ir-opt-btn" data-reply="' + lbl + '"' + title + '>' + lbl + '</button>';
+
+        if (irGroup.length === 1) {
+          // Single question — identical to previous rendering
+          const q = irGroup[0];
+          let html = '<div class="input-request"><div class="ir-question">' + inlineMd(q.question) + '</div>';
+          if (q.opts.length > 0) {
+            html += '<div class="ir-options">';
+            for (const o of q.opts) {
+              const lbl = esc(o.label || "");
+              const title = o.description ? ' title="' + esc(o.description) + '"' : "";
+              html += '<button class="ir-opt-btn" data-reply="' + lbl + '"' + title + '>' + lbl + '</button>';
+            }
+            html += '</div>';
           }
           html += '</div>';
+          irOut.push(html);
+        } else {
+          // Multiple questions — wizard UI
+          let wHtml = '<div class="ir-wizard" data-wizard-total="' + irGroup.length + '" data-wizard-step="0">';
+          wHtml += '<div class="ir-step-counter">Step <span class="ir-step-current">1</span> / ' + irGroup.length + '</div>';
+          for (let si = 0; si < irGroup.length; si++) {
+            const sq = irGroup[si];
+            const stepClass = si === 0 ? "ir-step active" : "ir-step future";
+            wHtml += '<div class="' + stepClass + '" data-step-idx="' + si + '">';
+            wHtml += '<div class="ir-question">' + inlineMd(sq.question) + '</div>';
+            wHtml += '<span class="ir-answer-label"></span>';
+            if (sq.opts.length > 0) {
+              wHtml += '<div class="ir-options">';
+              for (const o of sq.opts) {
+                const slbl = esc(o.label || "");
+                const stitle = o.description ? ' title="' + esc(o.description) + '"' : "";
+                wHtml += '<button class="ir-opt-btn" data-reply="' + slbl + '"' + stitle + '>' + slbl + '</button>';
+              }
+              wHtml += '</div>';
+            }
+            wHtml += '</div>';
+          }
+          wHtml += '</div>';
+          irOut.push(wHtml);
         }
-        html += '</div>';
-        out.push(html);
-        i++; continue;
+        continue;
       }
 
       // Plan mode entering
@@ -669,13 +732,14 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       i++;
     }
 
-    return out.join("\\n");
+    return out.concat(irOut).join("\\n");
   }
 
   function renderCurrentResponse() {
     if (!currentResponseEl) return;
     const combined = responseOrder.map(id => responseParts.get(id)).join("\\n").trim();
     currentResponseEl.innerHTML = renderBotHtml(combined);
+    currentResponseEl.classList.add("streaming");
     scrollDown();
   }
 
@@ -717,6 +781,11 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     } else if (ev.type === "done") {
       if (!tabVisible) unreadCount++;
       setBusy(false);
+      // Reveal input-request buttons now that streaming is complete
+      if (currentResponseEl) {
+        currentResponseEl.classList.remove("streaming");
+        scrollDown();
+      }
       // Persist the combined response as a single history entry
       const combinedText = responseOrder.map(id => responseParts.get(id)).join("\\n").trim();
       if (combinedText) {
@@ -1174,21 +1243,68 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     send(text);
   });
 
-  // -- Input request option buttons --
+  // -- Input request option buttons (single + wizard) --
   transcript.addEventListener("click", (e) => {
     const btn = e.target.closest(".ir-opt-btn");
-    if (!btn || busy || btn.disabled) return;
+    if (!btn || btn.disabled) return;
     const reply = btn.dataset.reply;
     if (!reply) return;
-    // Disable ALL option buttons in this bot bubble (covers multi-question responses)
-    const bubble = btn.closest(".msg.bot");
-    if (bubble) {
-      for (const b of bubble.querySelectorAll(".ir-opt-btn")) {
-        b.disabled = true;
+
+    const wizard = btn.closest(".ir-wizard");
+
+    if (!wizard) {
+      // Single question — same behavior as before
+      if (busy) return;
+      const bubble = btn.closest(".msg.bot");
+      if (bubble) {
+        for (const b of bubble.querySelectorAll(".ir-opt-btn")) b.disabled = true;
       }
+      btn.classList.add("selected");
+      send(reply);
+      return;
     }
+
+    // Wizard mode — step-by-step progression
+    const total = parseInt(wizard.dataset.wizardTotal, 10);
+    const currentStep = parseInt(wizard.dataset.wizardStep, 10);
+    const step = btn.closest(".ir-step");
+    if (!step) return;
+    const stepIdx = parseInt(step.dataset.stepIdx, 10);
+    if (stepIdx !== currentStep) return;
+
+    // Mark this step answered
+    for (const b of step.querySelectorAll(".ir-opt-btn")) b.disabled = true;
     btn.classList.add("selected");
-    send(reply);
+    step.dataset.answer = reply;
+    const answerLabel = step.querySelector(".ir-answer-label");
+    if (answerLabel) answerLabel.textContent = "\\u2192 " + reply;
+    step.classList.remove("active");
+    step.classList.add("answered");
+
+    const nextStep = currentStep + 1;
+    if (nextStep < total) {
+      // Advance to next step
+      wizard.dataset.wizardStep = String(nextStep);
+      const counter = wizard.querySelector(".ir-step-current");
+      if (counter) counter.textContent = String(nextStep + 1);
+      const nextStepEl = wizard.querySelector('.ir-step[data-step-idx="' + nextStep + '"]');
+      if (nextStepEl) {
+        nextStepEl.classList.remove("future");
+        nextStepEl.classList.add("active");
+      }
+      scrollDown();
+    } else {
+      // All steps answered — collect and send
+      if (busy) return;
+      const answers = [];
+      const steps = wizard.querySelectorAll(".ir-step");
+      for (let si = 0; si < steps.length; si++) {
+        answers.push((si + 1) + ". " + (steps[si].dataset.answer || ""));
+      }
+      const counter = wizard.querySelector(".ir-step-counter");
+      if (counter) counter.textContent = "All " + total + " answers submitted";
+      send(answers.join("\\n"));
+    }
   });
 
 })();

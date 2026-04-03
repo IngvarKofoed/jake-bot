@@ -284,6 +284,16 @@
 - Added `webHost` config option (`WEB_HOST` env var, defaults to `0.0.0.0`) so the HTTP server binds to all interfaces instead of localhost-only
 - Updated `server.listen()` call, log message, and `.env.example`
 
+## 48. Step-by-step wizard UI for multi-question input requests
+
+- When `AskUserQuestion` sends multiple questions, the web adapter now renders a wizard with a step counter ("Step 1 / 3") instead of showing all questions at once
+- Only the current step's buttons are clickable; answering advances to the next step, dimming the completed one
+- After the last step, all answers are sent as a numbered list (e.g. `1. Espresso\n2. Tabs`)
+- Single-question input requests unchanged; restored history buttons disabled on page refresh
+- Input request buttons (single and wizard) always render at the bottom of the bot bubble, so accompanying text/descriptions appear above them
+- Buttons hidden during streaming (`.streaming` CSS class) and revealed on `done`, preventing premature clicks that would be wiped by re-renders
+- Frontend-only change in `web-page.ts` — no backend modifications
+
 ## 47. Add DISCORD_ALLOWED_USER_IDS access control
 
 - Parse `DISCORD_ALLOWED_USER_IDS` env var (comma/space-separated) into `ReadonlySet<string>` on `BotConfig`; empty = allow all users
