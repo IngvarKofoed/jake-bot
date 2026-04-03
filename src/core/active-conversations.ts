@@ -21,8 +21,23 @@ function makeKey(userId: string, channelId: string): ConvoKey {
   return `${userId}:${channelId}`;
 }
 
-function resolveWorkdir(workdir: string): string {
+export function resolveWorkdir(workdir: string): string {
   return resolve(homedir(), workdir);
+}
+
+/** Directories that are too broad / sensitive to use as a workdir. */
+const FORBIDDEN_WORKDIRS = new Set(["/", "/etc", "/usr", "/var", "/tmp", "/opt", "/bin", "/sbin"]);
+
+export function validateWorkdir(resolved: string): void {
+  if (!existsSync(resolved)) {
+    throw new Error(`Working directory does not exist: ${resolved}`);
+  }
+  if (resolved === homedir() || FORBIDDEN_WORKDIRS.has(resolved)) {
+    throw new Error(
+      `Refusing to use "${resolved}" as working directory — too broad. ` +
+        `Specify a project directory, e.g. /claude ~/my-project`,
+    );
+  }
 }
 
 export class ActiveConversations {
@@ -126,9 +141,7 @@ export class ActiveConversations {
       );
     }
     const resolved = resolveWorkdir(workdir);
-    if (!existsSync(resolved)) {
-      throw new Error(`Working directory does not exist: ${resolved}`);
-    }
+    validateWorkdir(resolved);
     const convo: Conversation = {
       pluginId,
       workdir: resolved,
@@ -183,6 +196,27 @@ export class ActiveConversations {
     });
   }
 
+  /**
+   * Atomically replace the current conversation (or start a new one).
+   * Validates the new workdir BEFORE ending the existing conversation,
+   * so a bad path never kills an active session.
+   */
+  replace(
+    userId: string,
+    channelId: string,
+    pluginId: string,
+    workdir: string,
+  ): Conversation {
+    const resolved = resolveWorkdir(workdir);
+    validateWorkdir(resolved); // throws before any mutation
+    const key = makeKey(userId, channelId);
+    const convo: Conversation = { pluginId, workdir: resolved, startedAt: Date.now() };
+    this.convos.set(key, convo);
+    this.save();
+    log.info("convo", `replace user=${userId} channel=${channelId} plugin=${pluginId} workdir=${resolved}`);
+    return convo;
+  }
+
   /** Resume an ended conversation with a known sessionId. */
   resume(
     userId: string,
@@ -192,9 +226,7 @@ export class ActiveConversations {
     sessionId: string,
   ): Conversation {
     const resolved = resolveWorkdir(workdir);
-    if (!existsSync(resolved)) {
-      throw new Error(`Working directory does not exist: ${resolved}`);
-    }
+    validateWorkdir(resolved);
     const key = makeKey(userId, channelId);
     const convo: Conversation = {
       pluginId,

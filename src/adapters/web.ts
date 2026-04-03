@@ -257,7 +257,7 @@ export class WebAdapter implements BotAdapter {
 
     const switchMatch = trimmed.match(SWITCH_RE);
     if (switchMatch) {
-      this.conversations.end(userId, cid);
+      // replace() inside startConversation handles ending the old conversation atomically
       const pluginId = switchMatch[1].toLowerCase();
       return this.startConversation(userId, cid, pluginId, this.config.defaultWorkdir, res);
     }
@@ -325,23 +325,22 @@ export class WebAdapter implements BotAdapter {
     const plugin = this.plugins.get(pluginId);
     if (!plugin) {
       this.emitSystem(cid, { type: "error", message: `Plugin "${pluginId}" not available` });
-      res.writeHead(400, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: `Plugin "${pluginId}" not available` }));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false }));
       return;
     }
 
     try {
-      // End existing conversation if any
-      this.conversations.end(userId, cid);
-      const convo = this.conversations.start(userId, cid, pluginId, workdir);
+      // replace() validates the workdir BEFORE mutating, so a bad path
+      // never kills the existing conversation.
+      const convo = this.conversations.replace(userId, cid, pluginId, workdir);
       this.emitSystem(cid, { type: "started", plugin: plugin.displayName, workdir: convo.workdir });
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true }));
     } catch (err) {
       this.emitSystem(cid, { type: "error", message: (err as Error).message });
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: (err as Error).message }));
     }
+    // Always 200 — user-facing feedback goes through the SSE system channel.
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
   }
 
   // -- TTS endpoint --

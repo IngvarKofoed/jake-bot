@@ -263,3 +263,16 @@
 ## 42. Fun placeholder text in web adapter
 
 - Changed the "Working..." placeholder bubble to "Cooking up something good…" for a more energizing vibe
+
+## 43. Reject dangerous workdir paths (homedir, root, system dirs)
+
+- Added `validateWorkdir()` in `ActiveConversations` that blocks home directory, `/`, and system paths (`/etc`, `/usr`, `/var`, `/tmp`, `/opt`, `/bin`, `/sbin`)
+- Applied to both `start()` and `resume()` — covers all adapters (Discord, Web) uniformly
+- Previously, `/claude` with no `workdir` silently defaulted to `homedir()`, giving the AI access to the entire home directory
+
+## 44. Fix double error message and session loss on bad arguments
+
+- Web adapter's `startConversation` called `conversations.end()` before `start()` — if `start()` threw (e.g. bad workdir), the existing session was already gone
+- Added `ActiveConversations.replace()` that validates the new workdir before any mutation, so a bad path never kills an active session
+- Errors were shown twice: once via SSE system event, once from the HTTP 500 response. Now always returns HTTP 200 with errors delivered only through the SSE channel
+- Wrapped StreamCoordinator's event loop in try-catch so a plugin generator that throws (instead of yielding `fatal_error`) is rendered inline rather than bubbling up to the adapter for a duplicate error

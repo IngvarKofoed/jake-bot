@@ -107,79 +107,87 @@ export class StreamCoordinator {
     };
     startTyping();
 
-    for await (const ev of events) {
-      logBotEvent(ev, lens);
-      switch (ev.type) {
-        case "block_open":
-          openBlocks.set(ev.block.id, {
-            kind: ev.block.kind,
-            content: "",
-            renderStart: buffer.length,
-          });
-          break;
+    try {
+      for await (const ev of events) {
+        logBotEvent(ev, lens);
+        switch (ev.type) {
+          case "block_open":
+            openBlocks.set(ev.block.id, {
+              kind: ev.block.kind,
+              content: "",
+              renderStart: buffer.length,
+            });
+            break;
 
-        case "block_delta": {
-          const ob = openBlocks.get(ev.blockId);
-          if (!ob) break;
-          ob.content += ev.delta;
-          const rendered = this.renderer.renderStreaming(ob.kind, ob.content);
-          buffer = buffer.slice(0, ob.renderStart) + rendered;
-          await split();
-          await flush();
-          break;
-        }
-
-        case "block_close":
-          openBlocks.delete(ev.blockId);
-          break;
-
-        case "block_emit":
-          if (ev.block.kind === "tool_use") {
-            await finalize();
-            buffer = this.renderer.renderToolHeader(ev.block.toolName, ev.block.input);
-            await finalize();
-          } else if (ev.block.kind === "tool_result") {
-            const text =
-              ev.block.content.format === "text"
-                ? ev.block.content.text
-                : ev.block.content.format === "parts"
-                  ? ev.block.content.parts.map((p) => p.text).join("\n")
-                  : "";
-            const rendered = this.renderer.renderToolResult(text, ev.block.isError);
-            if (rendered) {
-              buffer += rendered;
-              await finalize();
-            }
-          } else {
-            buffer += this.renderer.renderEmit(ev);
+          case "block_delta": {
+            const ob = openBlocks.get(ev.blockId);
+            if (!ob) break;
+            ob.content += ev.delta;
+            const rendered = this.renderer.renderStreaming(ob.kind, ob.content);
+            buffer = buffer.slice(0, ob.renderStart) + rendered;
             await split();
             await flush();
+            break;
           }
-          break;
 
-        case "input_request":
-          await finalize();
-          buffer = this.renderer.renderInputRequest(ev.request.kind, ev.request.text, ev.request.options);
-          await finalize();
-          break;
+          case "block_close":
+            openBlocks.delete(ev.blockId);
+            break;
 
-        case "mode_change":
-          await finalize();
-          buffer = this.renderer.renderModeChange(ev.mode);
-          await finalize();
-          break;
+          case "block_emit":
+            if (ev.block.kind === "tool_use") {
+              await finalize();
+              buffer = this.renderer.renderToolHeader(ev.block.toolName, ev.block.input);
+              await finalize();
+            } else if (ev.block.kind === "tool_result") {
+              const text =
+                ev.block.content.format === "text"
+                  ? ev.block.content.text
+                  : ev.block.content.format === "parts"
+                    ? ev.block.content.parts.map((p) => p.text).join("\n")
+                    : "";
+              const rendered = this.renderer.renderToolResult(text, ev.block.isError);
+              if (rendered) {
+                buffer += rendered;
+                await finalize();
+              }
+            } else {
+              buffer += this.renderer.renderEmit(ev);
+              await split();
+              await flush();
+            }
+            break;
 
-        case "complete":
-          result = ev;
-          break;
+          case "input_request":
+            await finalize();
+            buffer = this.renderer.renderInputRequest(ev.request.kind, ev.request.text, ev.request.options);
+            await finalize();
+            break;
 
-        case "fatal_error":
-          buffer += this.renderer.renderFatalError(ev.error.message);
-          result = ev;
-          break;
+          case "mode_change":
+            await finalize();
+            buffer = this.renderer.renderModeChange(ev.mode);
+            await finalize();
+            break;
+
+          case "complete":
+            result = ev;
+            break;
+
+          case "fatal_error":
+            buffer += this.renderer.renderFatalError(ev.error.message);
+            result = ev;
+            break;
+        }
+
+        if (ev.type === "complete" || ev.type === "fatal_error") break;
       }
-
-      if (ev.type === "complete" || ev.type === "fatal_error") break;
+    } catch (err) {
+      // Plugin generator threw instead of yielding fatal_error.
+      // Render the error inline so the adapter's catch block doesn't
+      // produce a second, duplicate error message.
+      const message = err instanceof Error ? err.message : String(err);
+      buffer += this.renderer.renderFatalError(message);
     }
 
     if (result?.type === "complete" && this.renderer.renderFooter) {
