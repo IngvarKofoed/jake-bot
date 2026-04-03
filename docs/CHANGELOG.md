@@ -238,3 +238,10 @@
 ## 38. Auto-focus input field on page load in web adapter
 
 - Focus the text input after SSE connection opens so the user can type immediately after refresh
+
+## 39. Fix duplicate input-request divs in web adapter
+
+- `extractQuestions` → `extractAllQuestions`: handle all questions in `AskUserQuestion`, not just the first
+- `mapSpecialTool` now returns an array of events (one per question)
+- Deduplicate `responseOrder` to prevent repeated message IDs from duplicating rendered content
+- Clicking any option button now disables ALL option buttons in the bot bubble, not just the same question's

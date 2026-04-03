@@ -675,8 +675,9 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
         responseParts = new Map();
         responseOrder = [];
       }
+      const isNew = !responseParts.has(ev.messageId);
       responseParts.set(ev.messageId, ev.text);
-      responseOrder.push(ev.messageId);
+      if (isNew) responseOrder.push(ev.messageId);
       renderCurrentResponse();
     } else if (ev.type === "update") {
       responseParts.set(ev.messageId, ev.text);
@@ -1001,10 +1002,10 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     if (!btn || busy || btn.disabled) return;
     const reply = btn.dataset.reply;
     if (!reply) return;
-    // Disable all sibling option buttons and highlight the selected one
-    const container = btn.closest(".ir-options");
-    if (container) {
-      for (const b of container.querySelectorAll(".ir-opt-btn")) {
+    // Disable ALL option buttons in this bot bubble (covers multi-question responses)
+    const bubble = btn.closest(".msg.bot");
+    if (bubble) {
+      for (const b of bubble.querySelectorAll(".ir-opt-btn")) {
         b.disabled = true;
       }
     }

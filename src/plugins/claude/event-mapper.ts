@@ -75,7 +75,7 @@ export function* mapClaudeMessage(
         const tu = block as ToolUseBlock;
         const mapped = mapSpecialTool(tu, pluginId, ts);
         if (mapped) {
-          yield mapped;
+          for (const ev of mapped) yield ev;
         } else {
           yield {
             type: "block_emit",
@@ -125,29 +125,30 @@ export function* mapClaudeMessage(
 /**
  * Map Claude-specific interactive tools to platform-agnostic events.
  * Returns undefined for regular tools that should emit as tool_use.
+ * May return multiple events (e.g. one per question in AskUserQuestion).
  */
 function mapSpecialTool(
   tu: ToolUseBlock,
   pluginId: "claude",
   ts: number,
-): InputRequestEvent | ModeChangeEvent | undefined {
+): (InputRequestEvent | ModeChangeEvent)[] | undefined {
   if (tu.name === "AskUserQuestion") {
-    return {
-      type: "input_request",
+    return extractAllQuestions(tu.input).map((q) => ({
+      type: "input_request" as const,
       pluginId,
       ts,
       request: {
         id: nextId(),
-        kind: "question",
-        ...extractQuestions(tu.input),
+        kind: "question" as const,
+        ...q,
       },
-    };
+    }));
   }
   if (tu.name === "EnterPlanMode") {
-    return { type: "mode_change", pluginId, ts, mode: "plan" };
+    return [{ type: "mode_change", pluginId, ts, mode: "plan" }];
   }
   if (tu.name === "ExitPlanMode") {
-    return {
+    return [{
       type: "input_request",
       pluginId,
       ts,
@@ -157,40 +158,42 @@ function mapSpecialTool(
         text: "Plan complete. Ready to implement?",
         options: [{ label: "Implement now" }],
       },
-    };
+    }];
   }
   return undefined;
 }
 
 /**
- * Extract question text and options from AskUserQuestion tool input.
+ * Extract ALL questions from AskUserQuestion tool input.
  *
  * The SDK schema uses `questions[]` (array of up to 4), each with
- * `question`, `header`, `options[]`, and `multiSelect`. We flatten
- * the first question into our simpler model. If the input doesn't
- * match the expected shape, fall back to stringified text.
+ * `question`, `header`, `options[]`, and `multiSelect`. We map each
+ * question into our simpler model. If the input doesn't match the
+ * expected shape, fall back to stringified text.
  */
-function extractQuestions(
+function extractAllQuestions(
   input: Record<string, unknown>,
-): { text: string; options: InputRequestOption[] } {
+): { text: string; options: InputRequestOption[] }[] {
   const questions = input.questions;
   if (Array.isArray(questions) && questions.length > 0) {
-    const q = questions[0] as Record<string, unknown>;
-    const text = typeof q.question === "string" ? q.question : JSON.stringify(input);
-    const rawOpts = Array.isArray(q.options) ? q.options : [];
-    const options: InputRequestOption[] = rawOpts
-      .filter((o): o is Record<string, unknown> => o != null && typeof o === "object")
-      .map((o) => ({
-        label: typeof o.label === "string" ? o.label : String(o.label),
-        ...(typeof o.description === "string" ? { description: o.description } : {}),
-      }));
-    return { text, options };
+    return questions.map((raw) => {
+      const q = raw as Record<string, unknown>;
+      const text = typeof q.question === "string" ? q.question : JSON.stringify(q);
+      const rawOpts = Array.isArray(q.options) ? q.options : [];
+      const options: InputRequestOption[] = rawOpts
+        .filter((o): o is Record<string, unknown> => o != null && typeof o === "object")
+        .map((o) => ({
+          label: typeof o.label === "string" ? o.label : String(o.label),
+          ...(typeof o.description === "string" ? { description: o.description } : {}),
+        }));
+      return { text, options };
+    });
   }
   // Fallback for unexpected shapes
   const text = typeof input.question === "string"
     ? input.question
     : JSON.stringify(input);
-  return { text, options: [] };
+  return [{ text, options: [] }];
 }
 
 function normalizeToolResultContent(
