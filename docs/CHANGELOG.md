@@ -234,3 +234,7 @@
 
 - Title shows `Thinking...` while the bot is working, `Jake` when idle
 - Unread counter `(3)` prefixed when responses arrive while the tab is backgrounded; resets on focus
+
+## 38. Auto-focus input field on page load in web adapter
+
+- Focus the text input after SSE connection opens so the user can type immediately after refresh

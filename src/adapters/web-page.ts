@@ -419,6 +419,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       responseParts = new Map();
       responseOrder = [];
       currentResponseEl = null;
+      textfield.focus();
     };
 
     sse.onerror = () => {
