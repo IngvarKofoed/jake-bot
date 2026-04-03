@@ -1027,7 +1027,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     if (items.length === 0) { hideAutocomplete(); return; }
 
     autocomplete.innerHTML = items.map(function(item, i) {
-      var icon = item.isDirectory ? "&#128193;" : (acTrigger === "slash" ? "&#9656;" : "&#128196;");
+      var icon = item.isDirectory ? "&#128193;" : (acTrigger === "slash" ? "&#47;" : "&#128196;");
       return '<div class="ac-item' + (i === 0 ? ' selected' : '') + '" data-idx="' + i + '">'
         + '<span class="ac-icon">' + icon + '</span>'
         + '<span class="ac-label">' + escHtml(item.label) + '</span>'
