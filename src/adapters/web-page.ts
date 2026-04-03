@@ -17,6 +17,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     font-family: "SF Mono", "Cascadia Code", "Fira Code", "JetBrains Mono", Menlo, Consolas, monospace;
     background: #0d0d0d; color: #d4d4d4;
     height: 100dvh; display: flex; flex-direction: column;
+    max-width: 900px; margin: 0 auto; width: 100%;
   }
 
   /* Top bar */

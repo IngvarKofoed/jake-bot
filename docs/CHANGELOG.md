@@ -208,3 +208,7 @@
 - Backend sends `cleared: true` flag on the "started" system event emitted by `/clear`
 - Frontend handles the flag by calling `clearHistory()` (wipes localStorage) and clearing the transcript DOM
 - Shows a "Context cleared. Fresh {plugin} conversation." system message after clearing
+
+## 33. Cap web UI width on large screens
+
+- Added `max-width: 900px` with `margin: 0 auto` to `body` so the layout centers and doesn't stretch edge-to-edge on wide monitors
