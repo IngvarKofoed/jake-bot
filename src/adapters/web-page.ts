@@ -126,6 +126,9 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     color: #777; font-style: italic; font-size: 12px;
     border-left: 2px solid #333; padding-left: 8px; margin: 4px 0;
   }
+  .msg.bot .placeholder {
+    color: #999; font-size: 13px;
+  }
   .msg.bot .input-request {
     margin: 8px 0; padding: 8px 10px;
     background: #111; border: 1px solid #2a2a2a; border-radius: 4px;
@@ -678,7 +681,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
 
   /** Remove the "Working..." placeholder bubble if no real content arrived. */
   function discardPendingResponse() {
-    if (currentResponseEl && currentResponseEl.querySelector(".thinking")) {
+    if (currentResponseEl && currentResponseEl.querySelector(".placeholder")) {
       currentResponseEl.remove();
       currentResponseEl = null;
       responseParts = new Map();
@@ -775,7 +778,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       // Create response bubble with placeholder as visual feedback
       currentResponseEl = document.createElement("div");
       currentResponseEl.className = "msg bot";
-      currentResponseEl.innerHTML = '<span class="thinking">Cooking up something good…</span>';
+      currentResponseEl.innerHTML = '<span class="placeholder">Cooking up something good…</span>';
       transcript.appendChild(currentResponseEl);
       responseParts = new Map();
       responseOrder = [];
