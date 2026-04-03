@@ -208,7 +208,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   #autocomplete.visible { display: block; }
   .ac-item {
     display: flex; align-items: center; gap: 8px;
-    padding: 8px 12px; cursor: pointer; font-size: 13px;
+    padding: 6px 10px; cursor: pointer; font-size: 13px;
     border-bottom: 1px solid #222;
   }
   .ac-item:last-child { border-bottom: none; }
@@ -1029,7 +1029,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     autocomplete.innerHTML = items.map(function(item, i) {
       var icon = item.isDirectory ? "&#128193;" : (acTrigger === "slash" ? "" : "&#128196;");
       return '<div class="ac-item' + (i === 0 ? ' selected' : '') + '" data-idx="' + i + '">'
-        + '<span class="ac-icon">' + icon + '</span>'
+        + (icon ? '<span class="ac-icon">' + icon + '</span>' : '')
         + '<span class="ac-label">' + escHtml(item.label) + '</span>'
         + '<span class="ac-desc">' + escHtml(item.description || "") + '</span>'
         + '</div>';
