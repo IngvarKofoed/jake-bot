@@ -218,3 +218,10 @@
 
 - `renderBotHtml()` list collection loop stopped at blank lines between items, creating separate `<ol>` per item (each starting at 1)
 - Now skips blank lines when the next non-blank line is another list item, keeping the entire list in a single `<ol>`/`<ul>`
+
+## 35. Disable controls when disconnected and send button when empty
+
+- Send button starts disabled; enabled only when input has text and SSE is connected
+- Input field, send button, and mic button all disabled when SSE connection is lost
+- Keyboard shortcut (Space for mic) also guarded by connected state
+- `send()` rejects calls when disconnected

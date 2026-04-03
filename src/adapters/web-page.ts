@@ -212,7 +212,10 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     background: #1a1a1a; color: #888; font-size: 13px;
     font-family: inherit; cursor: pointer; transition: all 0.15s;
   }
-  #textinput button:hover { border-color: #555; color: #bbb; }
+  #textinput button:hover:not(:disabled) { border-color: #555; color: #bbb; }
+  #textinput button:disabled { opacity: 0.3; cursor: default; }
+  #textinput input:disabled { opacity: 0.4; cursor: default; }
+  #mic:disabled { opacity: 0.3; cursor: not-allowed; pointer-events: none; }
 
   /* TTS toggle */
   #ttsToggle {
@@ -257,7 +260,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     <div id="textinput">
       <form id="textform">
         <input type="text" id="textfield" placeholder="Type /claude workdir to start..." autocomplete="off">
-        <button type="submit">Send</button>
+        <button type="submit" id="sendbtn" disabled>Send</button>
       </form>
     </div>
   </div>
@@ -309,6 +312,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   const workdirLabel = document.getElementById("workdirLabel");
   const textfield = document.getElementById("textfield");
   const textform = document.getElementById("textform");
+  const sendbtn = document.getElementById("sendbtn");
   const ttsToggle = document.getElementById("ttsToggle");
   const working = document.getElementById("working");
 
@@ -316,6 +320,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   let listening = false;
   let busy = false;
   let speaking = false;
+  let connected = false;
   let ttsEnabled = localStorage.getItem("jakebot_tts") !== "off";
   let lastSendWasCommand = false;
   const COMMAND_RE = /^\\/(claude|gemini|codex|end|status|clear)(\\s|$)/i;
@@ -380,7 +385,9 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     sse = new EventSource("/api/stream?session=" + encodeURIComponent(session));
 
     sse.onopen = () => {
+      connected = true;
       statusbar.classList.remove("disconnected");
+      updateControls();
       // Reset busy state — if server restarted, in-flight work is lost
       setBusy(false);
       // Persist any partial response before clearing (done event never fired)
@@ -397,7 +404,10 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     };
 
     sse.onerror = () => {
+      connected = false;
       statusbar.classList.add("disconnected");
+      updateControls();
+      if (listening) stopListening();
     };
 
     sse.addEventListener("event", (e) => {
@@ -711,7 +721,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
 
   // -- Send message --
   async function send(text) {
-    if (!text.trim() || busy) return;
+    if (!text.trim() || busy || !connected) return;
     const trimmed = text.trim();
     const isCommand = COMMAND_RE.test(trimmed);
     lastSendWasCommand = isCommand;
@@ -755,6 +765,14 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     busy = b;
     micBtn.classList.toggle("busy", b);
     working.classList.toggle("active", b);
+    updateControls();
+  }
+
+  function updateControls() {
+    const hasText = textfield.value.trim().length > 0;
+    sendbtn.disabled = !connected || !hasText;
+    textfield.disabled = !connected;
+    micBtn.disabled = !connected;
   }
 
   // -- TTS (server-side via Google Cloud TTS) --
@@ -927,7 +945,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
 
   // -- Mic button --
   micBtn.addEventListener("click", () => {
-    if (busy) return;
+    if (busy || !connected) return;
     if (listening) stopListening();
     else startListening();
   });
@@ -937,7 +955,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     if (e.target.tagName === "INPUT") return;
     if (e.code === "Space") {
       e.preventDefault();
-      if (busy) return;
+      if (busy || !connected) return;
       if (listening) stopListening();
       else startListening();
     }
@@ -947,10 +965,12 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   });
 
   // -- Text input --
+  textfield.addEventListener("input", updateControls);
   textform.addEventListener("submit", (e) => {
     e.preventDefault();
     const text = textfield.value;
     textfield.value = "";
+    updateControls();
     send(text);
   });
 
