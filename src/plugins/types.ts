@@ -40,6 +40,9 @@ export interface CliPlugin {
     ctx: PluginContext,
   ): AsyncGenerator<BotEvent, void, void>;
 
+  /** Best-effort session cleanup. Called when the user runs /clear. */
+  clear?(sessionId: string, workdir: string): Promise<void>;
+
   /** Best-effort listing of past conversations from the CLI. */
   listConversations(workdir?: string): Promise<ConversationInfo[]>;
 }

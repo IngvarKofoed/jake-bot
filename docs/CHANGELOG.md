@@ -187,6 +187,14 @@
 - All five renderers (Discord, Web, Telegram, WhatsApp) implement `renderInputRequest` and `renderModeChange`; web frontend renders questions with accent-colored left border and mode changes as italic annotations
 - StreamCoordinator and logger handle the two new event types
 
+## 31. Active plugin-aware /clear (context reset)
+
+- Added optional `clear?(sessionId, workdir)` method to `CliPlugin` interface — plugins actively participate in session reset
+- Implemented `clear()` in Claude, Gemini, and Codex plugins (log + hook for future cleanup)
+- `/clear` handler now calls `plugin.clear()` before resetting conversation state, instead of passively dropping the sessionId
+- Updated reply message to "Context reset. Fresh {plugin} conversation in {workdir}." (matches Claude Code's mental model)
+- Updated command description to "Reset context — starts a fresh session (same plugin & workdir)"
+
 ## 26. Web adapter: survive page refresh (session + message history)
 
 - Session ID now stored in `localStorage` instead of `sessionStorage`, so it persists across refresh and tab close

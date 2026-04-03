@@ -4,6 +4,7 @@ import type { CliPlugin, ExecuteInput, PluginContext, ConversationInfo } from ".
 import type { BotEvent } from "../../stream/events.js";
 import { GeminiEventParser } from "./event-parser.js";
 import { prepareGeminiLaunch } from "./mcp-config.js";
+import { log } from "../../core/logger.js";
 
 export class GeminiPlugin implements CliPlugin {
   readonly id = "gemini";
@@ -47,6 +48,10 @@ export class GeminiPlugin implements CliPlugin {
     } finally {
       await launch.cleanup?.();
     }
+  }
+
+  async clear(sessionId: string, _workdir: string): Promise<void> {
+    log.info("gemini", `clear session=${sessionId}`);
   }
 
   async listConversations(): Promise<ConversationInfo[]> {

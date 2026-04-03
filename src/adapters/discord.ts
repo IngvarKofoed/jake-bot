@@ -89,7 +89,7 @@ export class DiscordAdapter implements BotAdapter {
 
       new SlashCommandBuilder()
         .setName("clear")
-        .setDescription("Clear conversation history and start fresh (same plugin & workdir)"),
+        .setDescription("Reset context — starts a fresh session (same plugin & workdir)"),
 
       new SlashCommandBuilder()
         .setName("status")
@@ -226,13 +226,19 @@ export class DiscordAdapter implements BotAdapter {
   }
 
   private async handleClear(interaction: ChatInputCommandInteraction): Promise<void> {
-    const convo = this.conversations.clear(interaction.user.id, interaction.channelId);
-    if (!convo) {
+    const existing = this.conversations.get(interaction.user.id, interaction.channelId);
+    if (!existing) {
       await interaction.reply({ content: "No active conversation.", ephemeral: true });
       return;
     }
-    const plugin = this.plugins.get(convo.pluginId);
-    await interaction.reply(`Cleared. Fresh ${plugin?.displayName ?? convo.pluginId} conversation ready.`);
+    const plugin = this.plugins.require(existing.pluginId);
+    if (existing.sessionId) {
+      await plugin.clear?.(existing.sessionId, existing.workdir);
+    }
+    this.conversations.clear(interaction.user.id, interaction.channelId);
+    await interaction.reply(
+      `Context reset. Fresh ${plugin.displayName} conversation in \`${existing.workdir}\`.`,
+    );
   }
 
   private async handleStatus(interaction: ChatInputCommandInteraction): Promise<void> {

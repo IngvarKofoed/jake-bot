@@ -221,12 +221,16 @@ export class WebAdapter implements BotAdapter {
     }
 
     if (SLASH_CLEAR_RE.test(trimmed)) {
-      const convo = this.conversations.clear(userId, cid);
-      if (!convo) {
+      const existing = this.conversations.get(userId, cid);
+      if (!existing) {
         this.emitSystem(cid, { type: "error", message: "No active conversation" });
       } else {
-        const plugin = this.plugins.get(convo.pluginId);
-        this.emitSystem(cid, { type: "started", plugin: plugin?.displayName ?? convo.pluginId, workdir: convo.workdir });
+        const plugin = this.plugins.require(existing.pluginId);
+        if (existing.sessionId) {
+          await plugin.clear?.(existing.sessionId, existing.workdir);
+        }
+        this.conversations.clear(userId, cid);
+        this.emitSystem(cid, { type: "started", plugin: plugin.displayName, workdir: existing.workdir });
       }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true }));

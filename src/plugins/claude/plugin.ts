@@ -2,6 +2,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { CliPlugin, ExecuteInput, PluginContext, ConversationInfo } from "../types.js";
 import type { BotEvent } from "../../stream/events.js";
 import { mapClaudeMessage } from "./event-mapper.js";
+import { log } from "../../core/logger.js";
 
 export class ClaudePlugin implements CliPlugin {
   readonly id = "claude";
@@ -35,6 +36,10 @@ export class ClaudePlugin implements CliPlugin {
     for await (const msg of query({ prompt: input.message, options })) {
       yield* mapClaudeMessage(msg as Parameters<typeof mapClaudeMessage>[0], "claude");
     }
+  }
+
+  async clear(sessionId: string, _workdir: string): Promise<void> {
+    log.info("claude", `clear session=${sessionId}`);
   }
 
   async listConversations(): Promise<ConversationInfo[]> {

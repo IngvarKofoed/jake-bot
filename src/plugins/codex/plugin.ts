@@ -1,6 +1,7 @@
 import type { CliPlugin, ExecuteInput, PluginContext, ConversationInfo } from "../types.js";
 import type { BotEvent } from "../../stream/events.js";
 import { mapCodexEvent, type CodexSdkEvent } from "./event-mapper.js";
+import { log } from "../../core/logger.js";
 
 /** Codex SDK client interface (hypothetical -- adapt to actual SDK). */
 export interface CodexClient {
@@ -31,6 +32,10 @@ export class CodexPlugin implements CliPlugin {
     })) {
       yield mapCodexEvent(sdkEvent);
     }
+  }
+
+  async clear(sessionId: string, _workdir: string): Promise<void> {
+    log.info("codex", `clear session=${sessionId}`);
   }
 
   async listConversations(workdir?: string): Promise<ConversationInfo[]> {
