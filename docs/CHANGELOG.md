@@ -259,3 +259,7 @@
 
 - Removed gray `/` icon from slash-command autocomplete items — label already contains the `/` prefix
 - Tightened autocomplete item padding and skip rendering the empty icon span so commands sit closer to the box edge
+
+## 42. Fun placeholder text in web adapter
+
+- Changed the "Working..." placeholder bubble to "Cooking up something good…" for a more energizing vibe

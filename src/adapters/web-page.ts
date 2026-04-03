@@ -775,7 +775,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       // Create response bubble with placeholder as visual feedback
       currentResponseEl = document.createElement("div");
       currentResponseEl.className = "msg bot";
-      currentResponseEl.innerHTML = '<span class="thinking">Working...</span>';
+      currentResponseEl.innerHTML = '<span class="thinking">Cooking up something good…</span>';
       transcript.appendChild(currentResponseEl);
       responseParts = new Map();
       responseOrder = [];
