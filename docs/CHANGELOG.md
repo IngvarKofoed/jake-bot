@@ -212,3 +212,4 @@
 ## 33. Cap web UI width on large screens
 
 - Added `max-width: 900px` with `margin: 0 auto` to `body` so the layout centers and doesn't stretch edge-to-edge on wide monitors
+- Added subtle side borders (`#1e1e1e`) and a slightly lighter outer background (`#111111` on `html`) so the chat area feels inset

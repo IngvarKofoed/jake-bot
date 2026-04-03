@@ -13,11 +13,13 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
 <title>jake-bot</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { background: #111111; }
   body {
     font-family: "SF Mono", "Cascadia Code", "Fira Code", "JetBrains Mono", Menlo, Consolas, monospace;
     background: #0d0d0d; color: #d4d4d4;
     height: 100dvh; display: flex; flex-direction: column;
     max-width: 900px; margin: 0 auto; width: 100%;
+    border-left: 1px solid #1e1e1e; border-right: 1px solid #1e1e1e;
   }
 
   /* Top bar */
