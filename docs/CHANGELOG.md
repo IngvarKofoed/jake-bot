@@ -254,3 +254,7 @@
 - Web adapter: new `GET /api/completions` endpoint for slash-command and file completions; `@file` expansion in `processMessage()` before `router.route()`
 - Web frontend: autocomplete dropdown above input field triggered by `/` (commands) or `@` (files); keyboard navigation (arrows, Enter/Tab, Escape), click selection, directory drill-down, debounced file fetches
 - Discord adapter: `buildSlashCommandsJSON()` now derives shared commands from the registry (DRY), keeping Discord-only commands (`/conversations`, `/resume`) local
+
+## 41. Fix double-slash in web autocomplete command icon
+
+- Changed slash-command autocomplete icon from `/ ` (gray `/`) to `▸` — the label already contains the `/` prefix, so the old icon created a redundant double-slash appearance
