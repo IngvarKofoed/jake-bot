@@ -239,7 +239,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
 
 <div id="statusbar">
   <div class="left">
-    <span class="hint" id="pluginLabel">Type /claude to start</span>
+    <span class="hint" id="pluginLabel">Type /claude workdir to start</span>
     <div id="working"><div class="spinner"></div></div>
   </div>
   <div class="right">
@@ -256,7 +256,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     </button>
     <div id="textinput">
       <form id="textform">
-        <input type="text" id="textfield" placeholder="Type a message or /claude workdir..." autocomplete="off">
+        <input type="text" id="textfield" placeholder="Type /claude workdir to start..." autocomplete="off">
         <button type="submit">Send</button>
       </form>
     </div>
@@ -329,9 +329,11 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     if (name) {
       pluginLabel.textContent = name;
       pluginLabel.className = "plugin";
+      textfield.placeholder = "Type a message...";
     } else {
-      pluginLabel.textContent = "Type /claude to start";
+      pluginLabel.textContent = "Type /claude workdir to start";
       pluginLabel.className = "hint";
+      textfield.placeholder = "Type /claude workdir to start...";
     }
   }
 
