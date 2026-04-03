@@ -411,7 +411,7 @@ export class WebAdapter implements BotAdapter {
     if (trigger === "slash") {
       const matches = this.commandRegistry.match(query);
       const items = matches.map((cmd) => ({
-        label: cmd.name,
+        label: `/${cmd.name}`,
         description: cmd.description,
         insertText: `/${cmd.name}`,
         category: cmd.category,
