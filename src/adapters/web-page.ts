@@ -489,7 +489,13 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
 
     sse.addEventListener("system", (e) => {
       const data = JSON.parse(e.data);
-      // System events mean the command was handled without LLM invocation —
+      // Info/warning events fire mid-routing (e.g. @file expansion feedback)
+      // — they must NOT discard the pending response bubble.
+      if (data.type === "info" || data.type === "warning") {
+        addSystemMessage(data.message || "");
+        return;
+      }
+      // Other system events mean the command was handled without LLM invocation —
       // discard the placeholder "Working..." bubble if it's still pending.
       discardPendingResponse();
       if (data.plugin) {

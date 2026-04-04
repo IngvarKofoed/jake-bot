@@ -289,6 +289,12 @@ export class WebAdapter implements BotAdapter {
     let messageToRoute = trimmed;
     if (convo) {
       const expanded = await expandFileReferences(trimmed, convo.workdir);
+      if (expanded.expandedPaths.length > 0) {
+        this.emitSystem(cid, {
+          type: "info",
+          message: `Attached: ${expanded.expandedPaths.join(", ")}`,
+        });
+      }
       if (expanded.failedPaths.length > 0) {
         this.emitSystem(cid, {
           type: "warning",

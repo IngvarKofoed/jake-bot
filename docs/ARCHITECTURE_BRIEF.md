@@ -22,6 +22,8 @@ src/
   adapters/
     types.ts               # BotAdapter interface
     discord.ts             # Discord inbound: Client, slash commands, event listeners
+    web.ts                 # Web inbound: HTTP + SSE server, voice commands, @file expansion
+    web-page.ts            # Self-contained HTML page (dark terminal UI, Web Speech API)
 
   stream/
     events.ts              # BotEvent discriminated union — the core type system
@@ -30,12 +32,14 @@ src/
   platform/
     types.ts               # ChatPlatform + PlatformConstraints interfaces
     discord.ts             # discord.js send/edit implementation
+    web.ts                 # Web platform: SSE-based send/edit via per-session EventEmitters
     telegram.ts            # stub
     whatsapp.ts            # stub
 
   rendering/
     types.ts               # Renderer interface (format-agnostic)
     discord-renderer.ts    # Discord markdown: tool cards, thinking previews, embed suppression
+    web-renderer.ts        # Web plain-text: clean output for TTS and browser display
     telegram-renderer.ts   # stub (HTML parse mode)
     whatsapp-renderer.ts   # stub (plain text)
 
@@ -58,6 +62,10 @@ src/
     active-conversations.ts # (userId, channelId) → {pluginId, workdir, sessionId}
     plugin-registry.ts     # plugin lookup by ID
     logger.ts              # timestamped Logger interface + logBotEvent
+    file-references.ts     # @path parser + <file> XML expansion for LLM context injection
+    file-listing.ts        # directory listing for @file autocomplete UI
+    command-registry.ts    # platform-agnostic slash command registry
+    google-tts.ts          # Google Cloud TTS REST client (text → streaming MP3)
 
   process-manager/
     types.ts               # ManagedProcess, ProcessStatus, RingBuffer
@@ -86,14 +94,15 @@ Long-running processes managed via MCP protocol. `ProcessSupervisor` handles spa
 ## Data Flow
 
 ```
-User message → Discord slash command / follow-up message
-  → DiscordAdapter (event listeners)
+User message → Discord slash command / Web POST / voice transcript
+  → Adapter (DiscordAdapter or WebAdapter)
+    → expandFileReferences() — @path → <file> XML injection (web only)
     → Router.route()
       → ActiveConversations lookup
       → Plugin.execute() → AsyncGenerator<BotEvent>
         → StreamCoordinator.run()
           → Renderer formats each event
-          → Platform sends/edits messages
+          → Platform sends/edits messages (Discord API or SSE)
           → Returns CompleteEvent with sessionId
       → Session ID saved for follow-up turns
 ```
@@ -121,3 +130,7 @@ See `.env.example`. Required: `DISCORD_TOKEN`, `DISCORD_APP_ID`.
 | `CLAUDE_MAX_TURNS` | `30` | Max agentic turns per Claude invocation |
 | `CLAUDE_MAX_BUDGET` | `5.0` | Max USD budget per Claude invocation |
 | `GEMINI_BIN` | `gemini` | Path to Gemini CLI binary |
+| `WEB_HOST` | `0.0.0.0` | Web adapter bind address |
+| `WEB_PORT` | `3000` | Web adapter HTTP port |
+| `DEFAULT_PLUGIN` | `claude` | Default plugin for web auto-start |
+| `GOOGLE_API_KEY` | — | Google Cloud API key (TTS) |
