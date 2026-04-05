@@ -252,7 +252,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   #textinput form { display: flex; gap: 8px; }
   #textinput input {
     flex: 1; padding: 9px 12px; border-radius: 6px; border: 1px solid #333;
-    background: #1a1a1a; color: #d4d4d4; font-size: 13px;
+    background: #1a1a1a; color: #d4d4d4; font-size: 16px;
     font-family: inherit; outline: none; transition: border-color 0.15s;
   }
   #textinput input:focus { border-color: #555; }
@@ -310,7 +310,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     <div id="textinput">
       <div id="autocomplete"></div>
       <form id="textform">
-        <input type="text" id="textfield" placeholder="Type /claude workdir to start..." autocomplete="off">
+        <input type="text" id="textfield" placeholder="Type /claude workdir to start..." autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="send">
         <button type="submit" id="sendbtn" disabled>Send</button>
       </form>
     </div>
@@ -320,9 +320,22 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
 <script>
 (function() {
   // -- Session (localStorage so it survives refresh / tab close) --
+  // crypto.randomUUID() requires a secure context (HTTPS or localhost).
+  // Over plain HTTP on a LAN IP (e.g. 192.168.x.x) it is undefined,
+  // so we fall back to a Math.random-based UUID generator.
+  function generateUUID() {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
+      var r = Math.random() * 16 | 0;
+      return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+
   let session = localStorage.getItem("jakebot_session");
   if (!session) {
-    session = crypto.randomUUID();
+    session = generateUUID();
     localStorage.setItem("jakebot_session", session);
   }
 
@@ -1198,10 +1211,15 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   }
 
   // Wire input events
+  // "input" is the primary event; "keyup" and "change" are fallbacks for iOS
+  // Safari where the input event can be swallowed by predictive-text /
+  // autocorrect suggestions and the virtual keyboard word bar.
   textfield.addEventListener("input", function() {
     updateControls();
     handleAutocompleteInput();
   });
+  textfield.addEventListener("keyup", updateControls);
+  textfield.addEventListener("change", updateControls);
 
   // Keyboard navigation for autocomplete
   textfield.addEventListener("keydown", function(e) {
@@ -1240,13 +1258,26 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   });
 
   // -- Text input --
-  textform.addEventListener("submit", (e) => {
-    e.preventDefault();
+  function submitText() {
     hideAutocomplete();
     const text = textfield.value;
     textfield.value = "";
     updateControls();
     send(text);
+  }
+
+  textform.addEventListener("submit", (e) => {
+    e.preventDefault();
+    submitText();
+  });
+
+  // Explicit Enter handler — iOS Safari may not submit a form when the
+  // submit button is disabled, so we handle Enter ourselves.
+  textfield.addEventListener("keydown", function(e) {
+    if (e.key === "Enter" && !acVisible) {
+      e.preventDefault();
+      submitText();
+    }
   });
 
   // -- Input request option buttons (single + wizard) --

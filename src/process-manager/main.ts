@@ -12,16 +12,13 @@ import { log } from "../core/logger.js";
 const port = parseInt(process.env.PROCESS_MANAGER_PORT ?? String(DEFAULT_PORT), 10);
 const supervisor = new ProcessSupervisor();
 
-// Single MCP server instance reused across all requests — avoids creating
-// (and leaking) a new McpServer + transport per POST.
-const mcpServer = createProcessManagerMcp(supervisor);
-
 const httpServer = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://localhost:${port}`);
 
-  // Stateless Streamable HTTP MCP endpoint — each request is independent,
-  // matching the Python FastMCP stateless_http=True behaviour that worked.
+  // Stateless Streamable HTTP MCP endpoint — fresh McpServer per request
+  // because the SDK forbids calling connect() twice on the same instance.
   if (url.pathname === "/mcp" && req.method === "POST") {
+    const mcpServer = createProcessManagerMcp(supervisor);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
     });

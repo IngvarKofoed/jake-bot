@@ -306,9 +306,22 @@
 - Errors were shown twice: once via SSE system event, once from the HTTP 500 response. Now always returns HTTP 200 with errors delivered only through the SSE channel
 - Wrapped StreamCoordinator's event loop in try-catch so a plugin generator that throws (instead of yielding `fatal_error`) is rendered inline rather than bubbling up to the adapter for a duplicate error
 
+## 50. Fix process manager crash on second MCP connection
+
+- `McpServer.connect()` throws if already connected to a transport — the shared instance crashed on any second request
+- Now creates a fresh `McpServer` per POST to `/mcp`; the `ProcessSupervisor` (actual state) remains shared
+
 ## 49. Document web adapter + fix silent @file expansion
 
 - Added all web adapter files to `ARCHITECTURE_BRIEF.md`: adapters, platform, renderer, and core utilities (file-references, file-listing, command-registry, google-tts)
 - Updated data flow diagram and environment variables table with web-specific entries
 - Fixed `@file` references being invisibly expanded: the web adapter now emits an `"info"` system event listing successfully attached files so the user sees what the AI received
 - Added `"info"` and `"warning"` handlers to the web page SSE listener; these fire mid-routing and no longer discard the pending response bubble
+
+## 51. Fix web adapter completely broken on iPhone (LAN access)
+
+- **Root cause:** `crypto.randomUUID()` requires a secure context — works on `localhost` (desktop) but throws on `http://192.168.x.x` (iPhone over LAN), crashing the entire `<script>` before any event listeners are attached
+- Added `generateUUID()` fallback using `Math.random` when `crypto.randomUUID` is unavailable
+- Added explicit Enter keydown handler so form submission works even when the submit button is disabled (iOS Safari quirk)
+- Added `keyup`/`change` event fallbacks and `autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="send"` on the input as defense-in-depth
+- Bumped input font-size from 13px to 16px to prevent iOS Safari auto-zoom on focus
