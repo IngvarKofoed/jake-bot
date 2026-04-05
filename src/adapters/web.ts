@@ -117,30 +117,51 @@ export class WebAdapter implements BotAdapter {
     });
     res.write(":ok\n\n"); // flush headers to establish SSE connection
 
-    const emitter = this.platform.subscribe(cid);
-    const onEvent = (ev: WebPlatformEvent) => {
-      res.write(`event: event\ndata: ${JSON.stringify(ev)}\n\n`);
-    };
-    emitter.on("event", onEvent);
+    const buf = this.platform.subscribe(cid);
 
-    // System events (conversation lifecycle)
-    const onSystem = (data: Record<string, unknown>) => {
-      res.write(`event: system\ndata: ${JSON.stringify(data)}\n\n`);
-    };
-    emitter.on("system", onSystem);
+    // Determine last event ID for replay.
+    // Auto-reconnect: EventSource sends Last-Event-ID header automatically.
+    // Page reload: client passes the value stored in localStorage as a query param.
+    const lastIdHeader = req.headers["last-event-id"];
+    const lastIdParam = url.searchParams.get("lastEventId");
+    const lastIdRaw = typeof lastIdHeader === "string" ? lastIdHeader : lastIdParam;
+    const lastId = lastIdRaw ? parseInt(lastIdRaw, 10) : NaN;
 
-    // Restore conversation status on reconnect (e.g. page refresh)
+    // Replay missed events from the ring buffer
+    let replayed = 0;
+    if (!isNaN(lastId) && lastId > 0) {
+      const missed = buf.replay(lastId);
+      for (const ev of missed) {
+        res.write(`id: ${ev.id}\nevent: ${ev.kind}\ndata: ${JSON.stringify(ev.data)}\n\n`);
+      }
+      replayed = missed.length;
+    }
+
+    // Live listeners — every frame includes id: for reconnect tracking
+    const onEvent = (ev: WebPlatformEvent, id: number): void => {
+      res.write(`id: ${id}\nevent: event\ndata: ${JSON.stringify(ev)}\n\n`);
+    };
+    buf.onEvent(onEvent);
+
+    const onSystem = (data: Record<string, unknown>, id: number): void => {
+      res.write(`id: ${id}\nevent: system\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+    buf.onSystem(onSystem);
+
+    // Connection-scoped status (not buffered — generated fresh each connect)
     const userId = `web:${session}`;
     const convo = this.conversations.get(userId, cid);
+    const connectData: Record<string, unknown> = {
+      type: "connected",
+      replayed,
+      busy: this.busy.has(cid),
+    };
     if (convo) {
       const plugin = this.plugins.get(convo.pluginId);
-      const restoreData: Record<string, unknown> = {
-        type: "restored",
-        plugin: plugin?.displayName ?? convo.pluginId,
-        workdir: convo.workdir,
-      };
-      res.write(`event: system\ndata: ${JSON.stringify(restoreData)}\n\n`);
+      connectData.plugin = plugin?.displayName ?? convo.pluginId;
+      connectData.workdir = convo.workdir;
     }
+    res.write(`event: system\ndata: ${JSON.stringify(connectData)}\n\n`);
 
     // Heartbeat to prevent proxy timeouts
     const heartbeat = setInterval(() => {
@@ -149,9 +170,9 @@ export class WebAdapter implements BotAdapter {
 
     req.on("close", () => {
       clearInterval(heartbeat);
-      emitter.off("event", onEvent);
-      emitter.off("system", onSystem);
-      this.platform.unsubscribe(cid);
+      buf.offEvent(onEvent);
+      buf.offSystem(onSystem);
+      this.platform.detach(cid);
     });
   }
 
@@ -390,17 +411,15 @@ export class WebAdapter implements BotAdapter {
     res.end(JSON.stringify({ ok: true }));
 
     try {
-      const emitter = this.platform.subscribe(cid);
       await synthesizeStreaming(text, apiKey, (audio, index, total) => {
         if (audio) {
-          emitter.emit("event", { type: "audio", audio, index, total } as WebPlatformEvent);
+          this.platform.pushEvent(cid, { type: "audio", audio, index, total });
         }
       });
-      emitter.emit("event", { type: "audio_done" } as WebPlatformEvent);
+      this.platform.pushEvent(cid, { type: "audio_done" });
     } catch (err) {
       log.error(TAG, `TTS error: ${err instanceof Error ? err.message : String(err)}`);
-      const emitter = this.platform.subscribe(cid);
-      emitter.emit("event", { type: "audio_done" } as WebPlatformEvent);
+      this.platform.pushEvent(cid, { type: "audio_done" });
     }
   }
 
@@ -475,12 +494,10 @@ export class WebAdapter implements BotAdapter {
   }
 
   private emitSystem(cid: string, data: Record<string, unknown>): void {
-    const emitter = this.platform.subscribe(cid);
-    emitter.emit("system", data);
+    this.platform.pushSystem(cid, data);
   }
 
   private emitDone(cid: string): void {
-    const emitter = this.platform.subscribe(cid);
-    emitter.emit("event", { type: "done" } as WebPlatformEvent);
+    this.platform.pushEvent(cid, { type: "done" });
   }
 }
