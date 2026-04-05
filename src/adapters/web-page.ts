@@ -191,7 +191,20 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   .msg.bot .footer {
     color: #555; font-size: 11px; margin-top: 6px;
     border-top: 1px solid #222; padding-top: 4px;
+    display: flex; align-items: center; justify-content: space-between;
   }
+  .msg.bot .footer-actions {
+    display: flex; gap: 4px; flex-shrink: 0;
+  }
+  .msg.bot .footer-btn {
+    background: none; border: 1px solid #333; border-radius: 3px;
+    color: #555; cursor: pointer; padding: 2px 5px;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s; line-height: 0;
+  }
+  .msg.bot .footer-btn svg { width: 12px; height: 12px; fill: currentColor; }
+  .msg.bot .footer-btn:hover { border-color: #555; color: #999; }
+  .msg.bot .footer-btn.active { color: #5fad78; border-color: #5fad78; }
 
   /* Bottom bar */
   #bottombar {
@@ -464,27 +477,21 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   }
 
   // -- SSE connection --
+  const LAST_EID_KEY = "jakebot_last_eid_" + session;
   let sse;
   function connectSSE() {
-    sse = new EventSource("/api/stream?session=" + encodeURIComponent(session));
+    // Include last-event-id for page-reload replay (auto-reconnect uses the header)
+    const savedEid = localStorage.getItem(LAST_EID_KEY) || "";
+    const params = "session=" + encodeURIComponent(session)
+      + (savedEid ? "&lastEventId=" + encodeURIComponent(savedEid) : "");
+    sse = new EventSource("/api/stream?" + params);
 
     sse.onopen = () => {
       connected = true;
       statusbar.classList.remove("disconnected");
       updateControls();
-      // Reset busy state — if server restarted, in-flight work is lost
-      setBusy(false);
-      // Persist any partial response before clearing (done event never fired)
-      if (responseOrder.length > 0) {
-        const combinedText = responseOrder.map(id => responseParts.get(id)).join("\\n").trim();
-        if (combinedText) {
-          history.push({ role: "bot", text: combinedText, ts: Date.now() });
-          saveHistory();
-        }
-      }
-      responseParts = new Map();
-      responseOrder = [];
-      currentResponseEl = null;
+      // Don't clear response state here — the "connected" system event and
+      // any replayed events will restore the correct state.
       textfield.focus();
     };
 
@@ -496,12 +503,47 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     };
 
     sse.addEventListener("event", (e) => {
+      // Track last event ID for page-reload replay
+      if (e.lastEventId) {
+        try { localStorage.setItem(LAST_EID_KEY, e.lastEventId); } catch {}
+      }
       const data = JSON.parse(e.data);
       handlePlatformEvent(data);
     });
 
     sse.addEventListener("system", (e) => {
+      // Track last event ID for page-reload replay
+      if (e.lastEventId) {
+        try { localStorage.setItem(LAST_EID_KEY, e.lastEventId); } catch {}
+      }
       const data = JSON.parse(e.data);
+
+      // "connected" is sent once per SSE connection (not buffered).
+      // It carries replay count, busy state, and conversation info.
+      if (data.type === "connected") {
+        if (data.plugin) {
+          setPluginLabel(data.plugin);
+          workdirLabel.textContent = shortenPath(data.workdir || "");
+        }
+        setBusy(!!data.busy);
+        // If nothing was replayed and server isn't busy, any partial
+        // response from a previous connection is unrecoverable — persist
+        // what we have and clear.
+        if (!data.replayed && !data.busy) {
+          if (responseOrder.length > 0) {
+            const combinedText = responseOrder.map(id => responseParts.get(id)).join("\\n").trim();
+            if (combinedText) {
+              history.push({ role: "bot", text: combinedText, ts: Date.now() });
+              saveHistory();
+            }
+          }
+          responseParts = new Map();
+          responseOrder = [];
+          currentResponseEl = null;
+        }
+        return;
+      }
+
       // Info/warning events fire mid-routing (e.g. @file expansion feedback)
       // — they must NOT discard the pending response bubble.
       if (data.type === "info" || data.type === "warning") {
@@ -547,11 +589,6 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       if (data.type === "error") {
         addSystemMessage("Error: " + (data.message || "Unknown error"));
         lastSendWasCommand = false;
-        setBusy(false);
-      }
-      if (data.type === "restored") {
-        setPluginLabel(data.plugin || "active");
-        workdirLabel.textContent = shortenPath(data.workdir || "");
         setBusy(false);
       }
     });
@@ -693,10 +730,18 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
         i++; continue;
       }
 
-      // Duration footer
+      // Duration footer with action buttons
       if (/^Duration:\\s/.test(line)) {
         prevKind = "other";
-        out.push('<div class="footer">' + esc(line) + '</div>');
+        out.push('<div class="footer"><span>' + esc(line) + '</span>'
+          + '<span class="footer-actions">'
+          + '<button class="footer-btn" data-action="copy" title="Copy response">'
+          + '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>'
+          + '</button>'
+          + '<button class="footer-btn" data-action="tts" title="Read aloud">'
+          + '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>'
+          + '</button>'
+          + '</span></div>');
         i++; continue;
       }
 
@@ -1341,6 +1386,96 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       const counter = wizard.querySelector(".ir-step-counter");
       if (counter) counter.textContent = "All " + total + " answers submitted";
       send(answers.join("\\n"));
+    }
+  });
+
+  // -- Footer action buttons (copy + TTS) --
+  transcript.addEventListener("click", (e) => {
+    const btn = e.target.closest(".footer-btn");
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const bubble = btn.closest(".msg.bot");
+    if (!bubble) return;
+
+    // Extract the last prose section: walk backwards from .footer,
+    // collecting text nodes until we hit a tool, thinking, code block,
+    // input-request, wizard, or mode-plan element.
+    const footer = bubble.querySelector(".footer");
+    const skip = new Set(["tool", "tool-first", "tool-last", "thinking",
+      "input-request", "ir-wizard", "mode-plan", "footer"]);
+    let clean = "";
+    const children = Array.from(bubble.childNodes);
+    // Find the last "prose boundary" — we collect everything after it
+    let boundaryIdx = -1;
+    for (let ci = children.length - 1; ci >= 0; ci--) {
+      const node = children[ci];
+      if (node.nodeType === 1) {
+        const el = node;
+        const cls = el.className || "";
+        if ([...skip].some(s => cls.includes(s))) {
+          boundaryIdx = ci;
+          break;
+        }
+        // Also stop at <pre> (code blocks from tool results)
+        if (el.tagName === "PRE") {
+          boundaryIdx = ci;
+          break;
+        }
+      }
+    }
+    // Collect text from everything after the boundary
+    const proseNodes = children.slice(boundaryIdx + 1);
+    clean = proseNodes
+      .map(n => (n.textContent || "").trim())
+      .filter(t => t && !/^Duration:\s/.test(t))
+      .join("\\n")
+      .trim();
+    // Fallback: if no boundary found (pure text response), use full bubble text
+    if (!clean) {
+      clean = (bubble.textContent || "").split("\\n").filter(line => {
+        if (/^Duration:\\s/.test(line)) return false;
+        return true;
+      }).join("\\n").trim();
+    }
+
+    if (action === "copy") {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(clean).then(() => {
+          btn.classList.add("active");
+          setTimeout(() => btn.classList.remove("active"), 1500);
+        }).catch(() => {});
+      } else {
+        // Fallback for non-HTTPS contexts
+        const ta = document.createElement("textarea");
+        ta.value = clean;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        btn.classList.add("active");
+        setTimeout(() => btn.classList.remove("active"), 1500);
+      }
+    }
+
+    if (action === "tts") {
+      if (!clean || clean.length < 2) return;
+      const ttsText = clean.length > 4000 ? clean.slice(0, 4000) : clean;
+      cancelAudio();
+      speaking = true;
+      pauseRecognition();
+      btn.classList.add("active");
+      fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session, text: ttsText }),
+      }).catch(() => {
+        speaking = false;
+        resumeRecognition();
+      }).finally(() => {
+        setTimeout(() => btn.classList.remove("active"), 1500);
+      });
     }
   });
 

@@ -325,3 +325,18 @@
 - Added explicit Enter keydown handler so form submission works even when the submit button is disabled (iOS Safari quirk)
 - Added `keyup`/`change` event fallbacks and `autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="send"` on the input as defense-in-depth
 - Bumped input font-size from 13px to 16px to prevent iOS Safari auto-zoom on focus
+
+## 52. Add copy & TTS buttons to web message footer
+
+- Added two flat-icon buttons (copy, speaker) to the duration footer of each bot message in the web UI
+- Copy button uses Clipboard API (with `execCommand` fallback for non-HTTPS) and shows a brief green highlight
+- TTS button reuses the existing `/api/tts` endpoint and audio playback pipeline
+- Buttons render on restored history messages as well
+
+## 53. SSE event replay on web adapter reconnect
+
+- Added `EventBuffer` class to `WebPlatform` — per-session ring buffer (500 events) that stores every SSE event with a monotonic sequence ID
+- All events (content, system, TTS audio) now flow through the buffer; every SSE frame includes an `id:` field for the native SSE `Last-Event-ID` mechanism
+- On SSE reconnect (auto or page reload), server replays missed events from the buffer so in-flight responses survive tab close / network drops
+- Client stores `lastEventId` in localStorage and passes it as a query param on page reload; `onopen` no longer eagerly clears response state
+- Replaced the `"restored"` system event with a richer `"connected"` event carrying `replayed` count, `busy` flag, plugin name, and workdir
