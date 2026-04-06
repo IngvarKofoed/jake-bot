@@ -442,6 +442,10 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   let responseParts = new Map();  // messageId -> latest text for that part
   let responseOrder = [];         // ordered messageIds
 
+  // Clean text cache — maps bot bubble elements to the last text block content.
+  // Populated from the backend "done" event (lastText field) and from history restore.
+  const cleanTextMap = new WeakMap();
+
   // Sync TTS toggle class with persisted state
   ttsToggle.classList.toggle("active", ttsEnabled);
 
@@ -458,6 +462,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
         const el = document.createElement("div");
         el.className = "msg bot";
         el.innerHTML = renderBotHtml(entry.text);
+        if (entry.lastText) cleanTextMap.set(el, entry.lastText);
         // Disable input-request buttons from history (answers already submitted)
         for (const b of el.querySelectorAll(".ir-opt-btn")) b.disabled = true;
         transcript.appendChild(el);
@@ -853,7 +858,8 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       // Persist the combined response as a single history entry
       const combinedText = responseOrder.map(id => responseParts.get(id)).join("\\n").trim();
       if (combinedText) {
-        history.push({ role: "bot", text: combinedText, ts: Date.now() });
+        history.push({ role: "bot", text: combinedText, lastText: ev.lastText || "", ts: Date.now() });
+        if (currentResponseEl && ev.lastText) cleanTextMap.set(currentResponseEl, ev.lastText);
       }
       responseParts = new Map();
       responseOrder = [];
@@ -1030,15 +1036,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     const botMsgs = transcript.querySelectorAll(".msg.bot");
     if (botMsgs.length === 0) return;
     const last = botMsgs[botMsgs.length - 1];
-    let text = last.textContent || "";
-
-    // Strip tool lines and footer for cleaner TTS
-    text = text.split("\\n").filter(line => {
-      if (line.startsWith("Tool:")) return false;
-      if (line.startsWith("[thinking]")) return false;
-      if (line.startsWith("Duration:")) return false;
-      return true;
-    }).join(". ").trim();
+    let text = cleanTextMap.get(last) || "";
 
     if (!text || text.length < 2) return;
     if (text.length > 4000) text = text.slice(0, 4000);
@@ -1397,46 +1395,8 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     const bubble = btn.closest(".msg.bot");
     if (!bubble) return;
 
-    // Extract the last prose section: walk backwards from .footer,
-    // collecting text nodes until we hit a tool, thinking, code block,
-    // input-request, wizard, or mode-plan element.
-    const footer = bubble.querySelector(".footer");
-    const skip = new Set(["tool", "tool-first", "tool-last", "thinking",
-      "input-request", "ir-wizard", "mode-plan", "footer"]);
-    let clean = "";
-    const children = Array.from(bubble.childNodes);
-    // Find the last "prose boundary" — we collect everything after it
-    let boundaryIdx = -1;
-    for (let ci = children.length - 1; ci >= 0; ci--) {
-      const node = children[ci];
-      if (node.nodeType === 1) {
-        const el = node;
-        const cls = el.className || "";
-        if ([...skip].some(s => cls.includes(s))) {
-          boundaryIdx = ci;
-          break;
-        }
-        // Also stop at <pre> (code blocks from tool results)
-        if (el.tagName === "PRE") {
-          boundaryIdx = ci;
-          break;
-        }
-      }
-    }
-    // Collect text from everything after the boundary
-    const proseNodes = children.slice(boundaryIdx + 1);
-    clean = proseNodes
-      .map(n => (n.textContent || "").trim())
-      .filter(t => t && !/^Duration:\s/.test(t))
-      .join("\\n")
-      .trim();
-    // Fallback: if no boundary found (pure text response), use full bubble text
-    if (!clean) {
-      clean = (bubble.textContent || "").split("\\n").filter(line => {
-        if (/^Duration:\\s/.test(line)) return false;
-        return true;
-      }).join("\\n").trim();
-    }
+    const clean = cleanTextMap.get(bubble) || "";
+    if (!clean) return;
 
     if (action === "copy") {
       if (navigator.clipboard && navigator.clipboard.writeText) {

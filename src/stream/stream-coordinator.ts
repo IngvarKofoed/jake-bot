@@ -24,6 +24,12 @@ function unclosedCodeFence(text: string): string | null {
   return fence;
 }
 
+export interface StreamResult {
+  event?: CompleteEvent | FatalErrorEvent;
+  /** Content of the last completed text block (not thinking/tools). */
+  lastText?: string;
+}
+
 export class StreamCoordinator {
   constructor(
     private readonly platform: ChatPlatform,
@@ -33,13 +39,14 @@ export class StreamCoordinator {
   async run(
     channelId: string,
     events: AsyncIterable<BotEvent>,
-  ): Promise<CompleteEvent | FatalErrorEvent | undefined> {
+  ): Promise<StreamResult> {
     const { charLimit, supportsEdit, editRateLimitMs } = this.platform.constraints;
 
     let buffer = "";
     let msg: MessageRef | undefined;
     let lastEdit = 0;
     let result: CompleteEvent | FatalErrorEvent | undefined;
+    let lastTextContent: string | undefined;
 
     const openBlocks = new Map<string, OpenBlock>();
 
@@ -148,9 +155,12 @@ export class StreamCoordinator {
             break;
           }
 
-          case "block_close":
+          case "block_close": {
+            const closed = openBlocks.get(ev.blockId);
+            if (closed?.kind === "text") lastTextContent = closed.content;
             openBlocks.delete(ev.blockId);
             break;
+          }
 
           case "block_emit":
             if (ev.block.kind === "tool_use") {
@@ -215,6 +225,6 @@ export class StreamCoordinator {
 
     await stopTyping();
     await finalize();
-    return result;
+    return { event: result, lastText: lastTextContent };
   }
 }

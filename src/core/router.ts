@@ -10,6 +10,8 @@ import { log } from "./logger.js";
 export interface RouteResult {
   event?: CompleteEvent | FatalErrorEvent;
   sessionId?: string;
+  /** Content of the last completed text block (for copy/TTS). */
+  lastText?: string;
 }
 
 export class Router {
@@ -59,7 +61,7 @@ export class Router {
       this.ctx,
     );
 
-    const result = await this.coordinator.run(channelId, events);
+    const { event: result, lastText } = await this.coordinator.run(channelId, events);
 
     // Capture session ID from the complete event for future turns
     if (result?.type === "complete" && result.sessionId) {
@@ -69,6 +71,7 @@ export class Router {
     return {
       event: result,
       sessionId: result?.type === "complete" ? result.sessionId : undefined,
+      lastText,
     };
   }
 }

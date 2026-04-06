@@ -347,3 +347,10 @@
 - If EventSource auto-reconnected (new connection B) while the old TCP connection (A) was still draining, A's eventual close would kill B's listeners, silently dropping all subsequent events
 - Root cause of "last message missing" in long web sessions: footer and `done` events were pushed to the ring buffer but never written to the live SSE response
 - Fix: removed `detach()` call from close handler — `offEvent`/`offSystem` already remove the connection-specific listeners
+
+## 55. Backend-driven lastText for copy & TTS buttons
+
+- StreamCoordinator now tracks the content of the last completed text block (`lastTextContent`) and returns it as `StreamResult.lastText`
+- `lastText` flows through Router → web adapter → SSE `done` event, so the frontend receives clean final text from the backend
+- Frontend `speakLast()` and copy handler use `cleanTextMap` (WeakMap) populated from `done` event instead of fragile DOM text extraction
+- Restored iOS autocapitalize and spellcheck on the input field

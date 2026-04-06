@@ -7,6 +7,8 @@ export interface WebPlatformEvent {
   messageId?: string;
   text?: string;
   active?: boolean;
+  /** Content of the last text block, for copy/TTS (type "done" only). */
+  lastText?: string;
   /** Base64-encoded MP3 audio data (for type "audio"). */
   audio?: string;
   /** Chunk index, 0-based (for type "audio"). */

@@ -332,15 +332,17 @@ export class WebAdapter implements BotAdapter {
     res.writeHead(202, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
 
+    let lastText: string | undefined;
     try {
-      await this.router.route(userId, cid, messageToRoute);
+      const result = await this.router.route(userId, cid, messageToRoute);
+      lastText = result.lastText;
     } catch (err) {
       log.error(TAG, `Route error: ${err instanceof Error ? err.message : String(err)}`);
       this.emitSystem(cid, { type: "error", message: err instanceof Error ? err.message : String(err) });
     } finally {
       this.busy.delete(cid);
       // Signal the browser that the response is complete
-      this.emitDone(cid);
+      this.emitDone(cid, lastText);
     }
   }
 
@@ -499,7 +501,7 @@ export class WebAdapter implements BotAdapter {
     this.platform.pushSystem(cid, data);
   }
 
-  private emitDone(cid: string): void {
-    this.platform.pushEvent(cid, { type: "done" });
+  private emitDone(cid: string, lastText?: string): void {
+    this.platform.pushEvent(cid, { type: "done", lastText });
   }
 }
