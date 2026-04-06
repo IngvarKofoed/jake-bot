@@ -354,3 +354,8 @@
 - `lastText` flows through Router → web adapter → SSE `done` event, so the frontend receives clean final text from the backend
 - Frontend `speakLast()` and copy handler use `cleanTextMap` (WeakMap) populated from `done` event instead of fragile DOM text extraction
 - Restored iOS autocapitalize and spellcheck on the input field
+
+## 56. Fix HTML escaping in wizard buttons + add wizard debug logging
+
+- `esc()` in `renderBotHtml` now escapes `"` → `&quot;` — previously unescaped quotes in option labels/descriptions could break `data-reply` and `title` attributes, producing unclickable or mis-labeled buttons
+- Added `console.log`/`console.warn` instrumentation to the wizard click handler to diagnose intermittent "button does nothing" reports — logs stepIdx, currentStep, total, busy, and streaming state on every click, plus warnings at each early-return path

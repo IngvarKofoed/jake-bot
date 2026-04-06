@@ -602,7 +602,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   connectSSE();
 
   function renderBotHtml(raw) {
-    const esc = (s) => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    const esc = (s) => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 
     // Inline markdown: bold, italic, inline code
     function inlineMd(s) {
@@ -1326,15 +1326,24 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
   // -- Input request option buttons (single + wizard) --
   transcript.addEventListener("click", (e) => {
     const btn = e.target.closest(".ir-opt-btn");
-    if (!btn || btn.disabled) return;
+    if (!btn || btn.disabled) {
+      if (btn) console.warn("[wizard] btn disabled, ignoring click");
+      return;
+    }
     const reply = btn.dataset.reply;
-    if (!reply) return;
+    if (!reply) {
+      console.warn("[wizard] empty data-reply, ignoring click. btn:", btn.outerHTML);
+      return;
+    }
 
     const wizard = btn.closest(".ir-wizard");
 
     if (!wizard) {
       // Single question — same behavior as before
-      if (busy) return;
+      if (busy) {
+        console.warn("[wizard] single-question click blocked: busy=true");
+        return;
+      }
       const bubble = btn.closest(".msg.bot");
       if (bubble) {
         for (const b of bubble.querySelectorAll(".ir-opt-btn")) b.disabled = true;
@@ -1348,9 +1357,18 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     const total = parseInt(wizard.dataset.wizardTotal, 10);
     const currentStep = parseInt(wizard.dataset.wizardStep, 10);
     const step = btn.closest(".ir-step");
-    if (!step) return;
+    if (!step) {
+      console.warn("[wizard] btn not inside .ir-step");
+      return;
+    }
     const stepIdx = parseInt(step.dataset.stepIdx, 10);
-    if (stepIdx !== currentStep) return;
+    console.log("[wizard] click: stepIdx=%d currentStep=%d total=%d reply=%s busy=%s streaming=%s",
+      stepIdx, currentStep, total, reply, busy,
+      btn.closest(".msg.bot")?.classList.contains("streaming") ?? "?");
+    if (stepIdx !== currentStep) {
+      console.warn("[wizard] stepIdx(%d) !== currentStep(%d), ignoring", stepIdx, currentStep);
+      return;
+    }
 
     // Mark this step answered
     for (const b of step.querySelectorAll(".ir-opt-btn")) b.disabled = true;
@@ -1371,11 +1389,17 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       if (nextStepEl) {
         nextStepEl.classList.remove("future");
         nextStepEl.classList.add("active");
+      } else {
+        console.warn("[wizard] next step element not found for idx=%d", nextStep);
       }
+      console.log("[wizard] advanced to step %d/%d", nextStep + 1, total);
       scrollDown();
     } else {
       // All steps answered — collect and send
-      if (busy) return;
+      if (busy) {
+        console.warn("[wizard] final step blocked: busy=true");
+        return;
+      }
       const answers = [];
       const steps = wizard.querySelectorAll(".ir-step");
       for (let si = 0; si < steps.length; si++) {
@@ -1383,6 +1407,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
       }
       const counter = wizard.querySelector(".ir-step-counter");
       if (counter) counter.textContent = "All " + total + " answers submitted";
+      console.log("[wizard] all %d steps answered, sending", total);
       send(answers.join("\\n"));
     }
   });
