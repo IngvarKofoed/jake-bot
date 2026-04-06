@@ -106,6 +106,14 @@
 - `StreamCoordinator` no longer contains any formatting — delegates fatal errors and completion footer to the renderer
 - Discord footer renders duration as subtext + italic (`-# *5.2s*`)
 
+## 19. Fix typing indicator gaps and post-completion persistence
+
+- Typing now runs continuously from start to completion — no longer stopped/restarted at content boundaries
+- Removed `stopTyping()` from `flush()` so the interval keeps running during streaming
+- Removed `startTyping()` from `finalize()` so typing isn't re-fired after the final message
+- Re-fire `sendTyping()` immediately after each `send()` since Discord auto-clears typing on message send
+- Added `stopTyping` to `ChatPlatform` interface; Discord implementation sends+deletes a zero-width space message to force-clear the indicator
+
 ## 20. Sync architecture docs with code (3-model audit)
 
 - Fixed `/codex` slash command crash — adapter now checks plugin is registered before starting conversation
@@ -119,14 +127,6 @@
 - New `/clear` command resets conversation history without switching plugin or workdir — replaces the `/end` + `/claude` two-step
 - Added `ActiveConversations.clear()` method that deletes the old session and starts a fresh one in place
 - Updated "already in conversation" error to mention `/clear` alongside `/end`
-
-## 19. Fix typing indicator gaps and post-completion persistence
-
-- Typing now runs continuously from start to completion — no longer stopped/restarted at content boundaries
-- Removed `stopTyping()` from `flush()` so the interval keeps running during streaming
-- Removed `startTyping()` from `finalize()` so typing isn't re-fired after the final message
-- Re-fire `sendTyping()` immediately after each `send()` since Discord auto-clears typing on message send
-- Added `stopTyping` to `ChatPlatform` interface; Discord implementation sends+deletes a zero-width space message to force-clear the indicator
 
 ## 22. Stop truncating thinking message in Discord
 
@@ -155,19 +155,21 @@
 - Graceful handling of corrupt, missing, or stale session files — logs a warning and starts fresh
 - No adapter changes needed: persisted sessions are loaded into the Map at construction time, so `get()` finds them transparently
 
-## 30. Styled command pills + status line in web adapter
+## 26. Web adapter: survive page refresh (session + message history)
 
-- Slash commands (`/claude`, `/end`, `/status`, `/clear`) now render as small muted pill-shaped bubbles instead of full user chat bubbles
-- Added persistent status line in topbar showing active plugin + shortened workdir (e.g. `Claude Code ~/data/jake-bot`)
-- Commands no longer create a "Working..." bot placeholder; system messages suppressed for explicit commands (kept for auto-start and errors)
-- New `"command"` history role persists and restores correctly from localStorage
-- Backend system SSE events (`started`, `restored`, `clear`) now include `workdir` field
+- Session ID now stored in `localStorage` instead of `sessionStorage`, so it persists across refresh and tab close
+- Chat transcript saved to `localStorage` (capped at 200 entries) — restored into the DOM on page load
+- Bot message text finalized from streaming updates on "done" event to avoid localStorage thrashing
+- Server emits a "restored" system event on SSE connect when an active conversation exists, restoring the plugin label
+- TTS toggle state also persisted in `localStorage`
 
-## 29. Fix orphaned "Working..." bubble for slash commands in web adapter
+## 27. Add input_request and mode_change event abstractions
 
-- Slash/voice commands (e.g. `/claude`, `/end`, `/status`) no longer leave a `div.msg.bot` "Working..." placeholder in the transcript
-- Added `discardPendingResponse()` helper that removes the placeholder bubble if no real content arrived
-- Called at the top of the SSE system event handler so any command-only response cleans up automatically
+- New `InputRequestEvent` (`type: "input_request"`) for when the LLM asks the user a question — platform-agnostic, each plugin maps its SDK-specific tools to it
+- New `ModeChangeEvent` (`type: "mode_change"`, mode `"plan"` | `"execute"`) for plan mode transitions
+- Claude event mapper intercepts `AskUserQuestion` → `input_request`, `EnterPlanMode` → `mode_change(plan)`, `ExitPlanMode` → `mode_change(execute)` instead of emitting them as generic tool_use events
+- All five renderers (Discord, Web, Telegram, WhatsApp) implement `renderInputRequest` and `renderModeChange`; web frontend renders questions with accent-colored left border and mode changes as italic annotations
+- StreamCoordinator and logger handle the two new event types
 
 ## 28. Structured options for input requests
 
@@ -179,13 +181,19 @@
 - Option descriptions shown as tooltips on hover in the web frontend
 - Mode changes finalize the buffer so they don't run into adjacent content
 
-## 27. Add input_request and mode_change event abstractions
+## 29. Fix orphaned "Working..." bubble for slash commands in web adapter
 
-- New `InputRequestEvent` (`type: "input_request"`) for when the LLM asks the user a question — platform-agnostic, each plugin maps its SDK-specific tools to it
-- New `ModeChangeEvent` (`type: "mode_change"`, mode `"plan"` | `"execute"`) for plan mode transitions
-- Claude event mapper intercepts `AskUserQuestion` → `input_request`, `EnterPlanMode` → `mode_change(plan)`, `ExitPlanMode` → `mode_change(execute)` instead of emitting them as generic tool_use events
-- All five renderers (Discord, Web, Telegram, WhatsApp) implement `renderInputRequest` and `renderModeChange`; web frontend renders questions with accent-colored left border and mode changes as italic annotations
-- StreamCoordinator and logger handle the two new event types
+- Slash/voice commands (e.g. `/claude`, `/end`, `/status`) no longer leave a `div.msg.bot` "Working..." placeholder in the transcript
+- Added `discardPendingResponse()` helper that removes the placeholder bubble if no real content arrived
+- Called at the top of the SSE system event handler so any command-only response cleans up automatically
+
+## 30. Styled command pills + status line in web adapter
+
+- Slash commands (`/claude`, `/end`, `/status`, `/clear`) now render as small muted pill-shaped bubbles instead of full user chat bubbles
+- Added persistent status line in topbar showing active plugin + shortened workdir (e.g. `Claude Code ~/data/jake-bot`)
+- Commands no longer create a "Working..." bot placeholder; system messages suppressed for explicit commands (kept for auto-start and errors)
+- New `"command"` history role persists and restores correctly from localStorage
+- Backend system SSE events (`started`, `restored`, `clear`) now include `workdir` field
 
 ## 31. Active plugin-aware /clear (context reset)
 
@@ -194,14 +202,6 @@
 - `/clear` handler now calls `plugin.clear()` before resetting conversation state, instead of passively dropping the sessionId
 - Updated reply message to "Context reset. Fresh {plugin} conversation in {workdir}." (matches Claude Code's mental model)
 - Updated command description to "Reset context — starts a fresh session (same plugin & workdir)"
-
-## 26. Web adapter: survive page refresh (session + message history)
-
-- Session ID now stored in `localStorage` instead of `sessionStorage`, so it persists across refresh and tab close
-- Chat transcript saved to `localStorage` (capped at 200 entries) — restored into the DOM on page load
-- Bot message text finalized from streaming updates on "done" event to avoid localStorage thrashing
-- Server emits a "restored" system event on SSE connect when an active conversation exists, restoring the plugin label
-- TTS toggle state also persisted in `localStorage`
 
 ## 32. Fix /clear not clearing web UI transcript
 
@@ -270,6 +270,13 @@
 - Applied to both `start()` and `resume()` — covers all adapters (Discord, Web) uniformly
 - Previously, `/claude` with no `workdir` silently defaulted to `homedir()`, giving the AI access to the entire home directory
 
+## 44. Fix double error message and session loss on bad arguments
+
+- Web adapter's `startConversation` called `conversations.end()` before `start()` — if `start()` threw (e.g. bad workdir), the existing session was already gone
+- Added `ActiveConversations.replace()` that validates the new workdir before any mutation, so a bad path never kills an active session
+- Errors were shown twice: once via SSE system event, once from the HTTP 500 response. Now always returns HTTP 200 with errors delivered only through the SSE channel
+- Wrapped StreamCoordinator's event loop in try-catch so a plugin generator that throws (instead of yielding `fatal_error`) is rendered inline rather than bubbling up to the adapter for a duplicate error
+
 ## 45. Fix 6 architecture bugs found by 3-model code review
 
 - **StreamCoordinator split corruption:** Recalculate `renderStart` offsets for all open blocks after `split()` so streaming text isn't garbled when responses exceed the platform char limit; also fix latent `stopTyping?.().catch()` TypeError for platforms without `stopTyping`
@@ -284,6 +291,11 @@
 - Added `webHost` config option (`WEB_HOST` env var, defaults to `0.0.0.0`) so the HTTP server binds to all interfaces instead of localhost-only
 - Updated `server.listen()` call, log message, and `.env.example`
 
+## 47. Add DISCORD_ALLOWED_USER_IDS access control
+
+- Parse `DISCORD_ALLOWED_USER_IDS` env var (comma/space-separated) into `ReadonlySet<string>` on `BotConfig`; empty = allow all users
+- Guard `interactionCreate` with ephemeral rejection and `messageCreate` with silent ignore for unauthorized user IDs
+
 ## 48. Step-by-step wizard UI for multi-question input requests
 
 - When `AskUserQuestion` sends multiple questions, the web adapter now renders a wizard with a step counter ("Step 1 / 3") instead of showing all questions at once
@@ -294,29 +306,17 @@
 - Buttons hidden during streaming (`.streaming` CSS class) and revealed on `done`, preventing premature clicks that would be wiped by re-renders
 - Frontend-only change in `web-page.ts` — no backend modifications
 
-## 47. Add DISCORD_ALLOWED_USER_IDS access control
-
-- Parse `DISCORD_ALLOWED_USER_IDS` env var (comma/space-separated) into `ReadonlySet<string>` on `BotConfig`; empty = allow all users
-- Guard `interactionCreate` with ephemeral rejection and `messageCreate` with silent ignore for unauthorized user IDs
-
-## 44. Fix double error message and session loss on bad arguments
-
-- Web adapter's `startConversation` called `conversations.end()` before `start()` — if `start()` threw (e.g. bad workdir), the existing session was already gone
-- Added `ActiveConversations.replace()` that validates the new workdir before any mutation, so a bad path never kills an active session
-- Errors were shown twice: once via SSE system event, once from the HTTP 500 response. Now always returns HTTP 200 with errors delivered only through the SSE channel
-- Wrapped StreamCoordinator's event loop in try-catch so a plugin generator that throws (instead of yielding `fatal_error`) is rendered inline rather than bubbling up to the adapter for a duplicate error
-
-## 50. Fix process manager crash on second MCP connection
-
-- `McpServer.connect()` throws if already connected to a transport — the shared instance crashed on any second request
-- Now creates a fresh `McpServer` per POST to `/mcp`; the `ProcessSupervisor` (actual state) remains shared
-
 ## 49. Document web adapter + fix silent @file expansion
 
 - Added all web adapter files to `ARCHITECTURE_BRIEF.md`: adapters, platform, renderer, and core utilities (file-references, file-listing, command-registry, google-tts)
 - Updated data flow diagram and environment variables table with web-specific entries
 - Fixed `@file` references being invisibly expanded: the web adapter now emits an `"info"` system event listing successfully attached files so the user sees what the AI received
 - Added `"info"` and `"warning"` handlers to the web page SSE listener; these fire mid-routing and no longer discard the pending response bubble
+
+## 50. Fix process manager crash on second MCP connection
+
+- `McpServer.connect()` throws if already connected to a transport — the shared instance crashed on any second request
+- Now creates a fresh `McpServer` per POST to `/mcp`; the `ProcessSupervisor` (actual state) remains shared
 
 ## 51. Fix web adapter completely broken on iPhone (LAN access)
 
@@ -340,3 +340,10 @@
 - On SSE reconnect (auto or page reload), server replays missed events from the buffer so in-flight responses survive tab close / network drops
 - Client stores `lastEventId` in localStorage and passes it as a query param on page reload; `onopen` no longer eagerly clears response state
 - Replaced the `"restored"` system event with a richer `"connected"` event carrying `replayed` count, `busy` flag, plugin name, and workdir
+
+## 54. Fix SSE listeners killed by stale connection cleanup
+
+- SSE close handler called `platform.detach()` which uses `removeAllListeners()` — this nukes listeners for ALL connections to the same channel, not just the closing one
+- If EventSource auto-reconnected (new connection B) while the old TCP connection (A) was still draining, A's eventual close would kill B's listeners, silently dropping all subsequent events
+- Root cause of "last message missing" in long web sessions: footer and `done` events were pushed to the ring buffer but never written to the live SSE response
+- Fix: removed `detach()` call from close handler — `offEvent`/`offSystem` already remove the connection-specific listeners

@@ -172,7 +172,9 @@ export class WebAdapter implements BotAdapter {
       clearInterval(heartbeat);
       buf.offEvent(onEvent);
       buf.offSystem(onSystem);
-      this.platform.detach(cid);
+      // Do NOT call detach() here — it removes ALL listeners, which would
+      // kill a newer SSE connection that already reconnected to the same
+      // channel while this stale TCP connection was still draining.
     });
   }
 

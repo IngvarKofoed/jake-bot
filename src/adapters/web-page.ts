@@ -323,7 +323,7 @@ export const WEB_PAGE_HTML = `<!DOCTYPE html>
     <div id="textinput">
       <div id="autocomplete"></div>
       <form id="textform">
-        <input type="text" id="textfield" placeholder="Type /claude workdir to start..." autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="send">
+        <input type="text" id="textfield" placeholder="Type /claude workdir to start..." autocomplete="off" enterkeyhint="send">
         <button type="submit" id="sendbtn" disabled>Send</button>
       </form>
     </div>
