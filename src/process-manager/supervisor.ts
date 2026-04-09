@@ -37,6 +37,7 @@ export class ProcessSupervisor {
       env: { ...process.env, ...managed.env },
       stdio: ["ignore", "pipe", "pipe"],
       detached: process.platform !== "win32",
+      shell: process.platform === "win32",
     });
 
     managed.child = child;
