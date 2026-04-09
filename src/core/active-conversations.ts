@@ -4,7 +4,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, isAbsolute } from "node:path";
 import { homedir } from "node:os";
 import { log } from "./logger.js";
 
@@ -21,8 +21,9 @@ function makeKey(userId: string, channelId: string): ConvoKey {
   return `${userId}:${channelId}`;
 }
 
-export function resolveWorkdir(workdir: string): string {
-  return resolve(homedir(), workdir);
+export function resolveWorkdir(workdir: string, baseDir: string): string {
+  if (isAbsolute(workdir)) return resolve(workdir);
+  return resolve(baseDir, workdir);
 }
 
 /** Directories that are too broad / sensitive to use as a workdir. */
@@ -43,8 +44,10 @@ export function validateWorkdir(resolved: string): void {
 export class ActiveConversations {
   private readonly convos = new Map<ConvoKey, Conversation>();
   private readonly persistPath: string | undefined;
+  private readonly baseDir: string;
 
-  constructor(persistPath?: string) {
+  constructor(baseDir: string, persistPath?: string) {
+    this.baseDir = baseDir;
     this.persistPath = persistPath;
     if (persistPath) this.load();
   }
@@ -140,7 +143,7 @@ export class ActiveConversations {
         `Already in a ${existing.pluginId} conversation. Use /end or /clear first.`,
       );
     }
-    const resolved = resolveWorkdir(workdir);
+    const resolved = resolveWorkdir(workdir, this.baseDir);
     validateWorkdir(resolved);
     const convo: Conversation = {
       pluginId,
@@ -207,7 +210,7 @@ export class ActiveConversations {
     pluginId: string,
     workdir: string,
   ): Conversation {
-    const resolved = resolveWorkdir(workdir);
+    const resolved = resolveWorkdir(workdir, this.baseDir);
     validateWorkdir(resolved); // throws before any mutation
     const key = makeKey(userId, channelId);
     const convo: Conversation = { pluginId, workdir: resolved, startedAt: Date.now() };
@@ -225,7 +228,7 @@ export class ActiveConversations {
     workdir: string,
     sessionId: string,
   ): Conversation {
-    const resolved = resolveWorkdir(workdir);
+    const resolved = resolveWorkdir(workdir, this.baseDir);
     validateWorkdir(resolved);
     const key = makeKey(userId, channelId);
     const convo: Conversation = {

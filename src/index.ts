@@ -36,7 +36,7 @@ const ctx: PluginContext = {
 
 // -- Start adapter(s) --
 
-const conversations = new ActiveConversations(config.sessionsFile || undefined);
+const conversations = new ActiveConversations(config.defaultWorkdir, config.sessionsFile || undefined);
 const adapters: BotAdapter[] = [];
 
 if (config.adapter === "discord" || config.adapter === "both") {
